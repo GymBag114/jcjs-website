@@ -7,27 +7,24 @@
   const planes = [...document.querySelectorAll('[data-depth]')].map(element => ({
     element, depth: Number(element.dataset.depth),
   }));
-  const motionButton = document.querySelector('.motion-toggle');
-  const fullscreenButton = document.querySelector('.fullscreen-toggle');
-  const hint = document.querySelector('.hint');
+  const pageButton = document.querySelector('.page-turn');
   const notice = document.querySelector('.notice');
-  const controls = document.querySelector('.controls');
-  const replayButton = document.querySelector('.intro-replay');
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  let onPrint = false;
+  let lockedUntil = 0;
+  let printWidth = 0, printHeight = 0;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  const coarsePointer = matchMedia('(pointer: coarse)');
+  const towerDust = window.createTowerDust(document.querySelector('.tower'));
   const target = { x: 0, y: 0 };
   const current = { x: 0, y: 0 };
   let paused = reducedMotion.matches;
   let frame = 0;
   let lastTime = 0;
-  let uiTimer;
-  let noticeTimer;
+
 
   /* ------------------------------------------------------------ opening */
   const intro = document.querySelector('.intro');
-  const skipButton = document.querySelector('.intro-skip');
   const outline = document.querySelector('.intro-stroke');
-  const hudLabels = [...document.querySelectorAll('.intro-hud span')];
   const emblem = document.querySelector('.emblem-mark');
   const parts = Object.fromEntries([...emblem.querySelectorAll('[data-emblem-part]')]
     .map(node => [node.dataset.emblemPart, node]));
@@ -124,8 +121,6 @@
     viewport.style.opacity = String(easeWindow(progress(t, TL.imageIn, TL.imageReady)));
     world.style.setProperty('--intro-zoom', String(lerp(s / (1440 * scale), 1, opening)));
 
-    const hud = progress(t, 0, 100) * (1 - progress(t, TL.imageIn, TL.imageReady));
-    for (const label of hudLabels) label.style.opacity = String(0.8 * hud);
     renderEmblem(t);
   }
 
@@ -135,13 +130,11 @@
     world.style.removeProperty('--intro-zoom');
     outline.style.opacity = '';
     outline.style.strokeDashoffset = '';
-    for (const label of hudLabels) label.style.opacity = '';
     emblem.style.visibility = '';
     for (const part of Object.values(parts)) part.removeAttribute('transform');
   }
 
   function finishIntro() {
-    const restoreFocus = document.activeElement === skipButton;
     ++state.run;
     state.active = false;
     state.playing = false;
@@ -150,22 +143,21 @@
     clearTimeout(window.introSafetyTimer);
     document.documentElement.classList.remove('intro-pending');
     intro.hidden = true;
-    controls.inert = false;
-    replayButton.disabled = false;
+    scene.classList.remove('intro-running');
+    pageButton.textContent = '进入第二页 · 未竟之塔';
     clearIntroStyles();
     reset(true);
-    showUI(3400);
-    if (restoreFocus) replayButton.focus({ preventScroll: true });
+    // Rasterize the poster between interactions, before the first upward wipe.
+    if (window.requestIdleCallback) requestIdleCallback(preparePrint);
+    else setTimeout(preparePrint, 0);
   }
 
   function prepareIntro() {
     reset(true);
-    clearTimeout(uiTimer);
-    scene.classList.remove('show-ui');
+    scene.classList.add('intro-running');
+    pageButton.textContent = '跳过开场';
     document.documentElement.classList.add('intro-pending');
     intro.hidden = false;
-    controls.inert = true;
-    replayButton.disabled = true;
     measure();
     state.time = 0;
     scrub(0);
@@ -223,6 +215,11 @@
     // Cover without stretching. Coordinates and movement stay in artwork pixels.
     const scale = Math.max(scene.clientWidth / 2560, scene.clientHeight / 1440);
     scene.style.setProperty('--scene-scale', String(scale));
+    const height = scene.clientHeight / scale;
+    scene.style.setProperty('--paper-w', scene.clientWidth / scale + 'px');
+    scene.style.setProperty('--paper-h', height + 'px');
+    scene.style.setProperty('--crop-y', (1440 - height) / 2 + 'px');
+    if (onPrint) preparePrint();
     // The mark is a lockup, not scenery: it keeps 93.75% of the visible width
     // (exactly 2400 artwork px at 16:9) and stays centred, so a narrow window
     // can never crop it or make it look oversized.
@@ -263,6 +260,7 @@
   }
 
   function reset(immediate = false) {
+    if (onPrint || performance.now() < lockedUntil) return;
     target.x = target.y = 0;
     if (immediate || paused) {
       cancelAnimationFrame(frame);
@@ -273,100 +271,128 @@
     } else wake();
   }
 
-  function showUI(duration = 2400) {
-    scene.classList.add('show-ui');
-    clearTimeout(uiTimer);
-    uiTimer = setTimeout(() => scene.classList.remove('show-ui'), duration);
+  function preparePrint() {
+    const width = scene.clientWidth, height = scene.clientHeight;
+    if (width === printWidth && height === printHeight) return;
+    window.drawTowerPrint(width, height);
+    printWidth = width;
+    printHeight = height;
   }
 
-  function updateMotionButton() {
-    const label = paused ? '开启视差' : '暂停视差';
-    motionButton.setAttribute('aria-pressed', String(paused));
-    motionButton.setAttribute('aria-label', label);
-    motionButton.title = `${label}（空格）`;
-  }
-
-  function toggleMotion() {
-    paused = !paused;
-    reset(true);
-    updateMotionButton();
-    showUI();
-  }
-
-  function announce(message) {
-    notice.textContent = message;
-    notice.classList.add('visible');
-    clearTimeout(noticeTimer);
-    noticeTimer = setTimeout(() => notice.classList.remove('visible'), 2600);
+  function turnPage(toPrint) {
+    if (state.active || toPrint === onPrint || performance.now() < lockedUntil) return;
+    if (toPrint) preparePrint();
+    towerDust.stop();
+    cancelAnimationFrame(frame);
+    frame = 0;
+    lastTime = 0;
+    target.x = current.x;
+    target.y = current.y;
+    onPrint = toPrint;
+    lockedUntil = performance.now() + (reducedMotion.matches ? 0 : 980);
+    scene.dataset.page = toPrint ? 'print' : 'landscape';
+    scene.setAttribute('aria-label', toPrint ? '未竟之塔 · Introducing JCJS' : '异境');
+    themeColor.content = toPrint ? '#eee9df' : '#e5ddd1';
+    pageButton.textContent = toPrint ? '返回第一页 · 异境' : '进入第二页 · 未竟之塔';
+    notice.textContent = toPrint ? '第二页，未竟之塔' : '第一页，异境';
   }
 
   async function toggleFullscreen() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
-      else announce('当前浏览器不支持全屏，可使用浏览器的全屏模式');
+      else notice.textContent = '当前浏览器不支持全屏，可使用浏览器的全屏模式';
     } catch {
-      announce('无法进入全屏，请使用浏览器的全屏模式');
+      notice.textContent = '无法进入全屏，请使用浏览器的全屏模式';
     }
-    showUI();
   }
 
+  let gesture;
+  scene.addEventListener('pointerdown', event => {
+    if (event.isPrimary && event.pointerType === 'touch') {
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      scene.setPointerCapture(event.pointerId);
+    }
+  });
+
   scene.addEventListener('pointermove', event => {
-    if (!state.active && event.clientY > scene.clientHeight - 100) showUI(1600);
-    if (state.active || paused || event.target.closest('button')) return;
+    if (state.active || performance.now() < lockedUntil || event.target.closest('button')) return;
+    if (onPrint) {
+      if (!reducedMotion.matches && event.isPrimary) towerDust.brush(event);
+      return;
+    }
+    if (paused) return;
+    if (gesture && Math.abs(event.clientY - gesture.y) > Math.abs(event.clientX - gesture.x)) return;
     const bounds = scene.getBoundingClientRect();
     target.x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / bounds.width * 2 - 1));
     target.y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / bounds.height * 2 - 1));
     wake();
   }, { passive: true });
-  scene.addEventListener('pointerdown', event => {
-    if (!state.active && event.pointerType === 'touch') showUI();
-  }, { passive: true });
-  scene.addEventListener('pointerleave', () => reset());
-  scene.addEventListener('pointerup', event => { if (event.pointerType === 'touch') reset(); });
-  scene.addEventListener('pointercancel', () => reset());
+
+  scene.addEventListener('pointerup', event => {
+    if (event.pointerId !== gesture?.id) return;
+    const dy = event.clientY - gesture.y, dx = event.clientX - gesture.x;
+    gesture = null;
+    towerDust.endStroke();
+    if (Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx)) turnPage(dy < 0);
+    reset();
+  });
+  scene.addEventListener('pointercancel', () => { gesture = null; towerDust.endStroke(); reset(); });
+
+  let wheelDelta = 0, lastWheel = -Infinity, wheelUsed = false;
+  scene.addEventListener('wheel', event => {
+    if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    const now = performance.now();
+    if (now - lastWheel > 180 || Math.sign(event.deltaY) !== Math.sign(wheelDelta)) {
+      wheelDelta = 0; wheelUsed = false;
+    }
+    lastWheel = now;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scene.clientHeight : 1;
+    wheelDelta += event.deltaY * unit;
+    if (!wheelUsed && Math.abs(wheelDelta) >= 26 && !state.active && now >= lockedUntil) {
+      turnPage(wheelDelta > 0);
+      wheelUsed = true;
+    }
+  }, { passive: false });
+  scene.addEventListener('pointerleave', () => { towerDust.endStroke(); reset(); });
   window.addEventListener('blur', () => reset(true));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (state.active) finishIntro(); reset(true); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { towerDust.stop(); if (state.active) finishIntro(); reset(true); } });
   window.addEventListener('resize', resize, { passive: true });
   reducedMotion.addEventListener('change', () => {
     paused = reducedMotion.matches;
     if (reducedMotion.matches && state.active) finishIntro();
     reset(true);
-    updateMotionButton();
+    if (reducedMotion.matches) { towerDust.stop(); lockedUntil = 0; }
   });
-  skipButton.addEventListener('click', finishIntro);
-  replayButton.addEventListener('click', startIntro);
-  motionButton.addEventListener('click', toggleMotion);
-  fullscreenButton.addEventListener('click', toggleFullscreen);
-  document.addEventListener('fullscreenchange', () => {
-    const label = document.fullscreenElement ? '退出全屏' : '进入全屏';
-    fullscreenButton.setAttribute('aria-label', label);
-    fullscreenButton.title = `${label}（F）`;
-    resize();
-  });
+  pageButton.addEventListener('click', () => state.active ? finishIntro() : turnPage(!onPrint));
+  document.addEventListener('fullscreenchange', resize);
   document.addEventListener('keydown', event => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (state.active) {
       if (event.key === 'Escape') { event.preventDefault(); finishIntro(); }
       return;
     }
-    if (event.key.toLowerCase() === 'r') { event.preventDefault(); startIntro(); return; }
-    if (event.code === 'Space' && !event.target.closest('button')) {
+    if (['ArrowDown', 'PageDown', 'End', 'ArrowUp', 'PageUp', 'Home'].includes(event.key)) {
       event.preventDefault();
-      toggleMotion();
+      turnPage(['ArrowDown', 'PageDown', 'End'].includes(event.key));
     } else if (event.key.toLowerCase() === 'f') {
-      event.preventDefault();
-      toggleFullscreen();
-    } else if (event.key === 'Escape') {
-      reset(true);
-    } else if (event.key === 'Tab') showUI(4000);
+      event.preventDefault(); toggleFullscreen();
+    } else if (!onPrint && performance.now() >= lockedUntil) {
+      if (event.key.toLowerCase() === 'r') { event.preventDefault(); startIntro(); }
+      else if (event.code === 'Space' && !event.target.closest('button')) {
+        event.preventDefault(); paused = !paused; reset(true);
+      } else if (event.key === 'Escape') reset(true);
+    }
   });
 
-  if (coarsePointer.matches) hint.innerHTML = '轻触并拖动，探索异境 <span aria-hidden="true">↗</span>';
   for (const image of document.querySelectorAll('.plane img')) {
-    image.addEventListener('error', () => announce('部分图片未能加载，请刷新页面重试'), { once: true });
+    image.addEventListener('error', () => { notice.textContent = '部分图片未能加载，请刷新页面重试'; }, { once: true });
+    image.addEventListener('load', () => {
+      printWidth = 0;
+      if (onPrint) preparePrint();
+    }, { once: true });
   }
-  updateMotionButton();
   resize();
 
   // ?intro-seek=1 holds the first frame for frame-by-frame review instead of

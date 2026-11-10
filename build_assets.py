@@ -53,3 +53,12 @@ wide.save(ASSETS / "ground.webp", quality=93, method=6)
 
 print("sky", (SKY_W, SKY_H))
 print("ground", wide.size, "placed at", (-SIDE_BLEED, GROUND_TOP))
+
+# Bake the second-page ink into an image so Canvas and CSS use identical tones.
+# Keep the source alpha, including the translucent right side of the tower.
+tower = Image.open(ROOT / "塔.png").convert("RGBA")
+gray = tower.convert("RGB").convert(
+    "L", (0.2126 * 1.22, 0.7152 * 1.22, 0.0722 * 1.22, -255 * 0.11)
+)
+monochrome = Image.merge("RGBA", (gray, gray, gray, tower.getchannel("A")))
+monochrome.save(ASSETS / "tower-monochrome.webp", lossless=True, method=6)

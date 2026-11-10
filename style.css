@@ -34,22 +34,7 @@ body { overscroll-behavior: none; }
    all wider than the 40 / 22px it can slide. What a slide uncovers shows the
    opaque sky plate underneath, never blank paper. */
 .ground { left: -48px; top: 827px; width: 2656px; height: 641px; }
-.hint, .controls { position: absolute; z-index: 2; bottom: max(22px, env(safe-area-inset-bottom)); transition: opacity 700ms ease; opacity: 0; }
-.hint { left: max(26px, env(safe-area-inset-left)); margin: 0; padding: 9px 12px; color: #29231e; background: #eee6d9b8; backdrop-filter: blur(12px); font-size: 11px; letter-spacing: .14em; pointer-events: none; }
-.hint span { padding-left: 14px; color: #9c241d; }
-.controls { right: max(24px, env(safe-area-inset-right)); display: flex; gap: 8px; }
-.scene.show-ui .hint, .scene.show-ui .controls, .controls:hover, .controls:focus-within { opacity: 1; }
-button { display: grid; place-items: center; width: 40px; height: 40px; padding: 10px; border: 1px solid #51463738; border-radius: 50%; color: #302820; background: #eee6d9b8; backdrop-filter: blur(12px); cursor: pointer; transition: background 160ms, color 160ms; -webkit-tap-highlight-color: transparent; }
-button:hover { color: #9c241d; background: #f5ece0; }
-button:focus-visible { outline: 2px solid #9c241d; outline-offset: 4px; }
-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: square; stroke-linejoin: miter; }
-.play-icon { display: none; }
-.motion-toggle[aria-pressed="true"] .pause-icon { display: none; }
-.motion-toggle[aria-pressed="true"] .play-icon { display: block; }
-.notice { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); margin: 0; padding: 10px 16px; background: #eee6d9ed; color: #302820; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity 200ms; }
-.notice.visible { opacity: 1; }
 .static-fallback { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
-@media (pointer: coarse) { .hint { font-size: 10px; letter-spacing: .08em; left: 16px; } .controls { right: 16px; } button { width: 44px; height: 44px; } }
 /* Opening sequence */
 .scene-viewport { position: absolute; inset: 0; overflow: hidden; }
 .world { transform: translate(-50%, -50%) scale(calc(var(--scene-scale, 1) * var(--intro-zoom, 1))); }
@@ -57,16 +42,132 @@ button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke
 .intro-pending .scene { background: #050505; }
 .intro-pending .intro:not([hidden]) { display: block; }
 .intro-pending .scene-viewport { opacity: 0; }
-.intro-pending .hint, .intro-pending .controls { visibility: hidden; pointer-events: none; }
+
 .intro-figure { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .intro-stroke { fill: none; stroke: #ffffff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: butt; stroke-linejoin: miter; stroke-dasharray: 1; stroke-dashoffset: 1; }
-.intro-hud { position: absolute; inset: 0; }
-.intro-hud span { position: absolute; color: #8d8678; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 8px; line-height: 1; letter-spacing: .26em; opacity: 0; }
-.intro-hud-mark { left: max(22px, 2.6vw); bottom: max(20px, 3.4vh); }
-.intro-hud-sys { right: max(22px, 2.6vw); bottom: max(20px, 3.4vh); }
-.intro-skip { position: absolute; right: max(26px, env(safe-area-inset-right)); top: max(24px, env(safe-area-inset-top)); display: flex; gap: 18px; width: auto; height: 44px; padding: 0 4px; border: 0; border-radius: 0; background: none; backdrop-filter: none; color: #eeeae1; font-size: 10px; letter-spacing: .16em; pointer-events: auto; mix-blend-mode: difference; }
-.intro-skip:hover { color: #fff; background: none; }
-.intro-skip:focus-visible { outline-color: #eeeae1; }
-@media (max-width: 620px) { .intro-hud span { font-size: 7px; letter-spacing: .16em; } .intro-skip { right: 20px; top: max(16px, env(safe-area-inset-top)); } }
-@media (max-width: 380px) { .hint { max-width: calc(100% - 188px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .hint span { display: none; } }
-@media (prefers-reduced-motion: reduce) { .plane { will-change: auto; } .hint, .controls, .notice { transition: none; } .intro-replay { display: none; } }
+
+.foreground { position: absolute; inset: 0; pointer-events: none; }
+.scene:not(.intro-running) .foreground {
+  clip-path: inset(0 0 var(--crop-y, 0px));
+}
+.scene[data-page="print"] .foreground { clip-path: inset(0 0 calc(var(--crop-y) + var(--paper-h))); }
+.scene {
+  --paper: #eee9df;
+}
+.poster {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--paper-w); height: var(--paper-h);
+  transform: translate(-50%, -50%);
+  background: var(--paper); overflow: hidden; pointer-events: none;
+  clip-path: inset(100% 0 0);
+}
+.scene[data-page="print"] .poster { clip-path: inset(0); }
+.print-veil {
+  position: absolute; inset: 0; z-index: 1; background: var(--paper);
+  clip-path: inset(0 0 0);
+}
+.scene[data-page="print"] .print-veil {
+  clip-path: inset(0 0 100%);
+}
+.poster canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* The sheet already carries the stone engraving at its leading edge. */
+.print-blade {
+  transform: scale(.84) rotate(-9deg);
+  clip-path: inset(0 47%);
+}
+.scene[data-page="print"] .print-blade {
+  transform: none; clip-path: inset(0);
+}
+.print-band {
+  clip-path: inset(0 50%);
+}
+.scene[data-page="print"] .print-band {
+  clip-path: inset(0);
+}
+.print-orbits {
+  opacity: 0;
+}
+.scene[data-page="print"] .print-orbits {
+  opacity: 1;
+}
+.print-geometry { position: absolute; inset: 0; }
+.print-geometry i {
+  position: absolute; display: block; border-radius: 50%; opacity: 0;
+  transform: scale(.08);
+}
+.print-meridian { border: 1px solid #4c3a2f35; }
+.print-geometry .print-meridian { transform: scaleX(.28); }
+.print-dot { background: #a32b20; }
+.print-satellite { background: #292622; }
+.scene[data-page="print"] .print-geometry i {
+  opacity: 1; transform: none;
+}
+.tower-dust { position: absolute; left: -224px; top: -224px; pointer-events: none; }
+.tower.dusting img { visibility: hidden; }
+.tower img { position: relative; }
+.scene[data-page="print"] .tower img { filter: grayscale(1) contrast(1.22); }
+.print-title {
+  position: absolute; inset: 45.4% 0 auto; height: 11.8%; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 5.2%; color: #f7f0df;
+  font-family: Didot, 'Bodoni 72', 'Times New Roman', serif; font-style: italic;
+  line-height: .82; font-size: min(calc(var(--paper-w)*.106),calc(var(--paper-h)*.17));
+  letter-spacing: -.075em; mix-blend-mode: screen;
+}
+.print-title span, .print-title img {
+  clip-path: inset(-30% 0 125%); transform: translateY(.28em);
+}
+.print-title span { font-size: min(calc(var(--paper-w)*.071),calc(var(--paper-h)*.121)); }
+.print-title img { width: 26%; height: auto; filter: invert(.96); transform: translateX(-14%); }
+.scene[data-page="print"] .print-title :is(span,img) {
+  clip-path: inset(-30% -8%); transform: none;
+}
+
+.print-signature {
+  opacity: 0; position: absolute; bottom: 4.9%; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 19px; color: #29251f;
+  font: 500 22px/1 'Songti SC', 'STSong', serif; letter-spacing: .36em; white-space: nowrap;
+}
+.scene[data-page="print"] .print-signature { opacity: 1; }
+.sr-only, .page-turn:not(:focus-visible) {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.page-turn:focus-visible { position: absolute; left: 16px; bottom: 16px; padding: 10px 14px; border: 1px solid; background: #eee9df; color: #211e1b; }
+@media (max-aspect-ratio: 4/5) {
+  .tower { scale: 1; transform-origin: center; }
+  .scene[data-page="print"] .tower { scale: .76; }
+  .print-title { top: 79.45%; height: 7%; font-size: min(calc(var(--paper-w)*.155),calc(var(--paper-h)*.085)); }
+  .print-title span { font-size: min(calc(var(--paper-w)*.111),calc(var(--paper-h)*.075)); }
+  .print-title img { width: 35%; }
+  .print-signature { bottom: 4.2%; font-size: 19px; }
+}
+
+/* One symmetric interpolation makes every layer retrace the same path. */
+.scene[data-page] :is(.poster, .foreground, .print-veil, .print-blade,
+  .print-band, .print-orbits, .print-geometry i, .print-title span,
+  .print-title img, .print-signature, .tower, .tower img) {
+  transition-property: opacity, transform, clip-path, filter, scale;
+  transition-duration: 980ms;
+  transition-timing-function: cubic-bezier(.4, 0, .6, 1);
+  transition-delay: 0ms;
+}
+/* The logo settles gently; its return uses the exact inverse curve. */
+.scene[data-page] .print-title img {
+  clip-path: none;
+  opacity: 0;
+  transform: translate3d(-24px, 0, 0);
+  transition-property: transform, opacity;
+  transition-timing-function: cubic-bezier(.75, 0, .78, .39);
+}
+.scene[data-page="print"] .print-title img {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition-timing-function: cubic-bezier(.22, .61, .25, 1);
+}
+/* Pointer parallax retains its own frame-based damping. */
+.scene[data-page] .tower { transition-property: scale; }
+.scene[data-page] .tower img { transition-property: filter; }
+@media (prefers-reduced-motion: reduce) {
+  .scene *, .scene:not(.intro-running) .foreground, .scene[data-page="print"] .print-title { transition: none !important; }
+  .plane { will-change: auto; }
+}
