@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 35 5" width="1050" height="150">
+  <!-- 以图片左下角为原点 O(0,0)，Y 轴向上延伸 -->
+  <g transform="translate(0, 5) scale(1, -1)" fill="#000000" stroke="#000000" stroke-width="0.04" stroke-linejoin="round">
+    <!-- ① -->
+    <polygon points="0,0 10,5 11,5 1,0" />
+    <!-- ② -->
+    <polygon points="11,5 12,5 12,0 11,0" />
+    <!-- ③ -->
+    <polygon points="7,0 11,0 10,0.5 6,0.5" />
+    <!-- ④ -->
+    <polygon points="12,5 13,5 17,3 16.5,2.75" />
+    <!-- ⑤ -->
+    <polygon points="18,2 18.5,2.25 23,0 22,0" />
+    <!-- ⑥ -->
+    <polygon points="12,0 13,0 23,5 22,5" />
+    <!-- ⑦ -->
+    <polygon points="23,4.5 24,5 24,0 23,0" />
+    <!-- ⑧ -->
+    <polygon points="24,5 34,5 35,4.5 25,4.5" />
+    <!-- ⑨ -->
+    <polygon points="24,0.5 34,0.5 35,0 25,0" />
+    <!-- ⑩ -->
+    <polygon points="26,4 27,4 33,1 32,1" />
+  </g>
+</svg>

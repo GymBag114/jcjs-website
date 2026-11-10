@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ded3c6">
+  <meta name="description" content="红、黑与白构成的异境。移动指针，探索塔与浮石之间的空间。">
+  <title>JCJS · 异境</title>
+  <link rel="icon" href="JCJS_LOGO.svg" type="image/svg+xml">
+  <script>
+    // Claim the black stage before the first paint; an unavailable script must
+    // never leave a black screen behind, so the class is released on a timer.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('intro-pending');
+      window.introSafetyTimer = setTimeout(() => document.documentElement.classList.remove('intro-pending'), 9000);
+    }
+  </script>
+  <link rel="stylesheet" href="style.css?v=11">
+  <script src="script.js?v=11" defer></script>
+</head>
+<body>
+  <main class="scene" aria-label="红黑异境：高塔、浮石与几何标志构成的视差画面">
+    <div class="scene-viewport">
+    <div class="world" aria-hidden="true">
+      <div class="plane sky" data-depth="0.15"><img src="assets/sky.webp" alt="" width="2591" height="1457" fetchpriority="high" draggable="false"></div>
+      <div class="plane emblem" data-depth="0.36">
+        <svg class="emblem-mark" viewBox="0 0 35 5" aria-hidden="true" focusable="false">
+          <g transform="translate(0 5) scale(1 -1)" fill="black" stroke="black" stroke-width=".04" stroke-linejoin="round">
+            <g data-emblem-part="left-tail">
+              <polygon points="0,0 10,5 11,5 1,0"/>
+              <polygon points="7,0 11,0 10,0.5 6,0.5"/>
+            </g>
+            <g data-emblem-part="left-stem">
+              <polygon points="11,5 12,5 12,0 11,0"/>
+            </g>
+            <g data-emblem-part="left-front">
+              <polygon points="12,5 13,5 17,3 16.5,2.75"/>
+              <polygon points="12,0 13,0 23,5 22,5"/>
+            </g>
+            <g data-emblem-part="right-front">
+              <polygon points="18,2 18.5,2.25 23,0 22,0"/>
+            </g>
+            <g data-emblem-part="right-stem">
+              <polygon points="23,4.5 24,5 24,0 23,0"/>
+            </g>
+            <g data-emblem-part="right-tail">
+              <polygon points="24,5 34,5 35,4.5 25,4.5"/>
+              <polygon points="24,0.5 34,0.5 35,0 25,0"/>
+              <polygon points="26,4 27,4 33,1 32,1"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="plane tower" data-depth="0.72"><img src="塔.png" alt="" width="756" height="1133" draggable="false"></div>
+      <div class="plane stones" data-depth="0.15"><img src="石头.png" alt="" width="1309" height="496" draggable="false"></div>
+      <div class="plane ground" data-depth="1"><img src="assets/ground.webp" alt="" width="2656" height="641" draggable="false"></div>
+    </div>
+    </div>
+    <div class="intro" hidden aria-hidden="true">
+      <svg class="intro-figure" focusable="false" aria-hidden="true">
+        <path class="intro-stroke" pathLength="1"/>
+      </svg>
+      <div class="intro-hud">
+        <span class="intro-hud-mark">异境 / BEYOND</span>
+        <span class="intro-hud-sys">SYS · JCJS 001</span>
+      </div>
+      <button class="intro-skip" type="button" title="跳过开场（Esc）">跳过开场 <span aria-hidden="true">↗</span></button>
+    </div>
+    <p class="hint">移动指针，探索异境 <span aria-hidden="true">↗</span></p>
+    <div class="controls">
+      <button class="intro-replay" type="button" aria-label="重播开场" title="重播开场（R）"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 8a6 6 0 1 1 .4 5M4 3v5h5"/></svg></button>
+      <button class="motion-toggle" type="button" aria-label="暂停视差" aria-pressed="false" title="暂停视差（空格）"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="pause-icon" d="M7 5v10M13 5v10"/><path class="play-icon" d="m7 5 7 5-7 5Z"/></svg></button>
+      <button class="fullscreen-toggle" type="button" aria-label="进入全屏" title="进入全屏（F）"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button>
+    </div>
+    <p class="notice" role="status" aria-live="polite"></p>
+  </main>
+  <noscript><img class="static-fallback" src="完整画面.png" alt="红黑异境静态画面；启用 JavaScript 可体验视差"></noscript>
+</body>
+</html>
