@@ -15,6 +15,13 @@
   let printWidth = 0, printHeight = 0;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const towerDust = window.createTowerDust(document.querySelector('.tower'));
+  const gallery = window.createGallery(scene, reducedMotion, emblemMotion, value => {
+    const label = value === 1 ? '未竟之塔 · 画廊终点' : value ? '未竟之塔 · 横向画廊' : '未竟之塔 · Introducing JCJS';
+    if (scene.getAttribute('aria-label') === label) return;
+    scene.setAttribute('aria-label', label);
+    notice.textContent = label;
+    pageButton.textContent = value === 1 ? '返回第二页 · 未竟之塔' : value ? '向右浏览画廊' : '进入横向画廊';
+  });
   const target = { x: 0, y: 0 };
   const current = { x: 0, y: 0 };
   let paused = reducedMotion.matches;
@@ -78,6 +85,12 @@
 
   // A stem joins two rigid pieces. Its leading edge arrives first and its
   // trailing edge catches up. Both edges finish at the original SVG vertices.
+  function emblemMotion(elapsed) {
+    const front = easeEmblem(clamp01(elapsed / 420));
+    const follower = easeEmblem(clamp01((elapsed - 85) / 420));
+    return { front, tail: lerp(front, follower, .78) };
+  }
+
   function renderEmblem(t) {
     const elapsed = t - TL.emblemStart;
     emblem.style.visibility = elapsed < 0 ? 'hidden' : 'visible';
@@ -85,9 +98,9 @@
 
     // Convert the screen margin to the original 35-unit logo coordinate space.
     const margin = (geom.w / geom.markWidth - 1) * 17.5 + 0.1;
-    const lead = 1 - easeEmblem(clamp01(elapsed / 420));
-    const delayed = 1 - easeEmblem(clamp01((elapsed - 85) / 420));
-    const tail = lerp(lead, delayed, 0.78);
+    const motion = emblemMotion(elapsed);
+    const lead = 1 - motion.front;
+    const tail = 1 - motion.tail;
     const leftDistance = -23 - margin;
     const rightDistance = 17 + margin; // The lower arm of the X starts at x=18.
     const left = leftDistance * lead;
@@ -220,6 +233,7 @@
     scene.style.setProperty('--paper-h', height + 'px');
     scene.style.setProperty('--crop-y', (1440 - height) / 2 + 'px');
     if (onPrint) preparePrint();
+    gallery.size();
     // The mark is a lockup, not scenery: it keeps 93.75% of the visible width
     // (exactly 2400 artwork px at 16:9) and stays centred, so a narrow window
     // can never crop it or make it look oversized.
@@ -281,7 +295,10 @@
 
   function turnPage(toPrint) {
     if (state.active || toPrint === onPrint || performance.now() < lockedUntil) return;
-    if (toPrint) preparePrint();
+    if (toPrint) {
+      preparePrint();
+      if (window.requestIdleCallback) requestIdleCallback(gallery.prepareTiles);
+    }
     towerDust.stop();
     cancelAnimationFrame(frame);
     frame = 0;
@@ -293,8 +310,16 @@
     scene.dataset.page = toPrint ? 'print' : 'landscape';
     scene.setAttribute('aria-label', toPrint ? '未竟之塔 · Introducing JCJS' : '异境');
     themeColor.content = toPrint ? '#eee9df' : '#e5ddd1';
-    pageButton.textContent = toPrint ? '返回第一页 · 异境' : '进入第二页 · 未竟之塔';
+    pageButton.textContent = toPrint ? '进入横向画廊' : '进入第二页 · 未竟之塔';
     notice.textContent = toPrint ? '第二页，未竟之塔' : '第一页，异境';
+  }
+
+  function navigate(forward) {
+    if (state.active || performance.now() < lockedUntil) return;
+    if (onPrint && (forward || gallery.active)) {
+      towerDust.stop();
+      gallery.step(forward);
+    } else turnPage(forward);
   }
 
   async function toggleFullscreen() {
@@ -310,15 +335,28 @@
   let gesture;
   scene.addEventListener('pointerdown', event => {
     if (event.isPrimary && event.pointerType === 'touch') {
-      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY, gallery: gallery.active };
+
       scene.setPointerCapture(event.pointerId);
     }
   });
 
   scene.addEventListener('pointermove', event => {
     if (state.active || performance.now() < lockedUntil || event.target.closest('button')) return;
+    if (onPrint && gesture && gesture.id === event.pointerId && !gesture.gallery &&
+        gesture.y-event.clientY > Math.max(8,Math.abs(event.clientX-gesture.x))) {
+      gesture.gallery = true;
+      towerDust.stop();
+    }
+    if (gesture?.gallery && gesture.id === event.pointerId) {
+      if (Math.abs(event.clientY-gesture.y)>Math.abs(event.clientX-gesture.x)) {
+        gallery.scroll((gesture.lastY-event.clientY)*1.8);
+      }
+      gesture.lastY=event.clientY;
+      return;
+    }
     if (onPrint) {
-      if (!reducedMotion.matches && event.isPrimary) towerDust.brush(event);
+      if (!gallery.active && !reducedMotion.matches && event.isPrimary) towerDust.brush(event);
       return;
     }
     if (paused) return;
@@ -332,9 +370,10 @@
   scene.addEventListener('pointerup', event => {
     if (event.pointerId !== gesture?.id) return;
     const dy = event.clientY - gesture.y, dx = event.clientX - gesture.x;
+    const scrubbed = gesture.gallery;
     gesture = null;
     towerDust.endStroke();
-    if (Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx)) turnPage(dy < 0);
+    if (!scrubbed && Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx)) navigate(dy < 0);
     reset();
   });
   scene.addEventListener('pointercancel', () => { gesture = null; towerDust.endStroke(); reset(); });
@@ -346,12 +385,19 @@
     const now = performance.now();
     if (now - lastWheel > 180 || Math.sign(event.deltaY) !== Math.sign(wheelDelta)) {
       wheelDelta = 0; wheelUsed = false;
+
     }
     lastWheel = now;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scene.clientHeight : 1;
     wheelDelta += event.deltaY * unit;
+    if (onPrint && (gallery.active || event.deltaY > 0) && !wheelUsed && now >= lockedUntil) {
+      if (!gallery.active) towerDust.stop();
+      gallery.scroll(event.deltaY * unit);
+      if (!gallery.target && event.deltaY < 0) wheelUsed = true;
+      return;
+    }
     if (!wheelUsed && Math.abs(wheelDelta) >= 26 && !state.active && now >= lockedUntil) {
-      turnPage(wheelDelta > 0);
+      navigate(wheelDelta > 0);
       wheelUsed = true;
     }
   }, { passive: false });
@@ -363,9 +409,13 @@
     paused = reducedMotion.matches;
     if (reducedMotion.matches && state.active) finishIntro();
     reset(true);
-    if (reducedMotion.matches) { towerDust.stop(); lockedUntil = 0; }
+    if (reducedMotion.matches) { towerDust.stop(); if (gallery.active) gallery.finish(); lockedUntil = 0; }
   });
-  pageButton.addEventListener('click', () => state.active ? finishIntro() : turnPage(!onPrint));
+  pageButton.addEventListener('click', () => {
+    if (state.active) finishIntro();
+    else if (gallery.target === 1) gallery.seek(0);
+    else navigate(true);
+  });
   document.addEventListener('fullscreenchange', resize);
   document.addEventListener('keydown', event => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -375,7 +425,9 @@
     }
     if (['ArrowDown', 'PageDown', 'End', 'ArrowUp', 'PageUp', 'Home'].includes(event.key)) {
       event.preventDefault();
-      turnPage(['ArrowDown', 'PageDown', 'End'].includes(event.key));
+      if (onPrint && event.key === 'End' && performance.now() >= lockedUntil) { towerDust.stop(); gallery.seek(1); }
+      else if (gallery.active && event.key === 'Home') gallery.seek(0);
+      else navigate(['ArrowDown', 'PageDown', 'End'].includes(event.key));
     } else if (event.key.toLowerCase() === 'f') {
       event.preventDefault(); toggleFullscreen();
     } else if (!onPrint && performance.now() >= lockedUntil) {
@@ -391,6 +443,7 @@
     image.addEventListener('load', () => {
       printWidth = 0;
       if (onPrint) preparePrint();
+      if (gallery.active) gallery.size();
     }, { once: true });
   }
   resize();

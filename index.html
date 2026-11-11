@@ -15,10 +15,11 @@
       window.introSafetyTimer = setTimeout(() => document.documentElement.classList.remove('intro-pending'), 9000);
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=21">
-  <script src="poster.js?v=6" defer></script>
+  <link rel="stylesheet" href="style.css?v=25">
+  <script src="poster.js?v=8" defer></script>
   <script src="tower-dust.js?v=5" defer></script>
-  <script src="script.js?v=16" defer></script>
+  <script src="gallery.js?v=4" defer></script>
+  <script src="script.js?v=20" defer></script>
 </head>
 <body>
   <main class="scene" data-page="landscape" aria-label="异境">
@@ -55,11 +56,17 @@
         </div>
         <div class="poster">
           <canvas class="print-masses"></canvas>
-          <canvas class="print-blade"></canvas>
+          <div class="print-geometry print-meridians"></div>
+          <canvas class="gallery" hidden></canvas>
+          <canvas class="print-ring ring-far"></canvas>
+          <canvas class="print-ring ring-near"></canvas>
+          <div class="print-blade"><canvas></canvas></div>
           <canvas class="print-band"></canvas>
           <canvas class="print-orbits"></canvas>
-          <div class="print-geometry"></div>
+          <div class="print-geometry print-dots"></div>
+          <div class="print-geometry print-satellites"></div>
           <div class="print-title" lang="en"><span>Introducing</span><img src="JCJS_LOGO.svg" alt="JCJS"></div>
+          <canvas class="print-overprint"></canvas>
           <div class="print-veil"></div>
           <div class="print-signature"><span>未竟之塔</span></div>
         </div>
