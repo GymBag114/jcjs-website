@@ -55,7 +55,7 @@ body {
   max-width: none;
 }
 /* Stacking, back to front: sky, emblem, tower, stones, ground.
-   artwork/sources/sky.png is a complete opaque plate, so nothing can be uncovered any more.
+   The sky plate is a complete opaque plate, so nothing can be uncovered any more.
    It is overscanned by 1.2% instead of mirrored, so its edges stay outside the
    frame and no reflection seam can appear. The stones are painted into that
    plate as well, so the stones plane rides at exactly the same depth - one

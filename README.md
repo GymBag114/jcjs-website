@@ -27,14 +27,13 @@ python3 -m http.server 8000
 | `styles/` | 按基础场景、开场、海报、无障碍、转场、画廊、JOIN 分组的样式，加载顺序由 HTML 固定 |
 | `assets/brand/` | 品牌 SVG |
 | `assets/images/` | 浏览器实际加载的图片，包括无脚本回退图 |
-| `artwork/sources/` | 生成天空、地面 WebP 所需的原始素材，不参与页面加载 |
-| `scripts/build_assets.py` | 生成天空、地面及灰阶塔 WebP |
+| `scripts/build_assets.py` | 从塔 PNG 生成灰阶塔 WebP |
 
 模块通过 `import` / `export` 声明依赖；共享纸张纹理由独立模块缓存。开场前的短内联脚本保留在 HTML 中，避免首次绘制闪烁，并在模块加载失败时定时解除黑屏。
 
 ## 素材重建
 
-已提交运行资源，日常预览无需重建。修改原始素材后，安装 Pillow 并运行：
+天空和地面直接使用已提交的 WebP；对应原始素材已删除，可从 Git 历史恢复。灰阶塔仍可从运行用的塔 PNG 重建：
 
 ```sh
 python3 -m pip install Pillow
