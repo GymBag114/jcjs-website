@@ -15,11 +15,14 @@
       window.introSafetyTimer = setTimeout(() => document.documentElement.classList.remove('intro-pending'), 9000);
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=25">
-  <script src="poster.js?v=8" defer></script>
-  <script src="tower-dust.js?v=5" defer></script>
-  <script src="gallery.js?v=4" defer></script>
-  <script src="script.js?v=20" defer></script>
+  <link rel="stylesheet" href="style.css?v=36">
+  <script src="poster.js?v=12" defer></script>
+  <script src="tower-dust.js?v=6" defer></script>
+  <script src="union.js?v=16" defer></script>
+  <script src="join-artwork.js?v=6" defer></script>
+  <script src="join-print.js?v=16" defer></script>
+  <script src="gallery.js?v=30" defer></script>
+  <script src="script.js?v=30" defer></script>
 </head>
 <body>
   <main class="scene" data-page="landscape" aria-label="异境">
@@ -68,7 +71,6 @@
           <div class="print-title" lang="en"><span>Introducing</span><img src="JCJS_LOGO.svg" alt="JCJS"></div>
           <canvas class="print-overprint"></canvas>
           <div class="print-veil"></div>
-          <div class="print-signature"><span>未竟之塔</span></div>
         </div>
         <div class="plane tower" data-depth="0.72"><img src="塔.png" alt="" width="756" height="1133" draggable="false"><canvas class="tower-dust" hidden></canvas></div>
         <div class="foreground">
@@ -82,6 +84,16 @@
         <path class="intro-stroke" pathLength="1"/>
       </svg>
     </div>
+    <a class="join-impression" href="https://silandri.top/" aria-label="JOIN US" hidden></a>
+    <footer class="join-footer" hidden>
+      <div class="footer-copy-slot">
+        <div class="footer-copy">
+          <p>JCJS隶属于SILANDRI。</p>
+          <p>本页面由C.S.T.F.完成设计。</p>
+        </div>
+      </div>
+      <img class="footer-logo" src="JCJS_LOGO.svg" alt="JCJS">
+    </footer>
     <button class="page-turn" type="button">进入第二页 · 未竟之塔</button>
     <p class="sr-only notice" role="status" aria-live="polite"></p>
   </main>

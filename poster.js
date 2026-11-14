@@ -56,7 +56,12 @@ window.drawTowerPrint = (() => {
     }
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.drawImage(plate, x, y, w, h);
+    // Match the opening scene's cover layout: crop the photograph, never
+    // change its aspect ratio when the print reflows to another viewport.
+    const cover = Math.max(w / plate.width, h / plate.height);
+    const sourceWidth = w / cover, sourceHeight = h / cover;
+    ctx.drawImage(plate, (plate.width-sourceWidth)/2, (plate.height-sourceHeight)/2,
+      sourceWidth, sourceHeight, x, y, w, h);
     ctx.restore();
   }
 
@@ -165,6 +170,19 @@ window.drawTowerPrint = (() => {
     });
   }
 
+  function printGrain(ctx,x,y,w,h) {
+    grain ||= grainTile();
+    ctx.fillStyle = ctx.createPattern(grain,'repeat');
+    ctx.fillRect(x,y,w,h);
+  }
+
+  // Both sheets are printed on the same stock. The band also has a photo pass.
+  window.drawPrintStock = function(ctx,w,h,light = false) {
+    ctx.fillStyle = light ? paper : '#111214';
+    ctx.fillRect(0,0,w,h);
+    printGrain(ctx,0,0,w,h);
+  };
+
   function bandPass(ctx,w,portrait) {
     const top = portrait ? 715 : 409, height = portrait ? 68 : 106;
     ctx.fillStyle = ink;
@@ -177,8 +195,7 @@ window.drawTowerPrint = (() => {
     ctx.fillStyle = red;
     ctx.fillRect(0,top,w*.016,height);
     ctx.fillRect(w*.984,top,w*.016,height);
-    ctx.fillStyle = ctx.createPattern(grain,'repeat');
-    ctx.fillRect(0,top,w,height);
+    printGrain(ctx,0,top,w,height);
   }
 
   function finePass(ctx, w, cx, cy, r, portrait) {

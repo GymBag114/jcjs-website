@@ -15,12 +15,13 @@
   let printWidth = 0, printHeight = 0;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const towerDust = window.createTowerDust(document.querySelector('.tower'));
-  const gallery = window.createGallery(scene, reducedMotion, emblemMotion, value => {
-    const label = value === 1 ? '未竟之塔 · 画廊终点' : value ? '未竟之塔 · 横向画廊' : '未竟之塔 · Introducing JCJS';
-    if (scene.getAttribute('aria-label') === label) return;
+  const gallery = window.createGallery(scene, reducedMotion, emblemMotion, bezier(.4,0,.6,1), value => {
+    if (value > 0) towerDust.settle();
+    const label = value > gallery.joinPage ? '第四页 · 页脚' : value === gallery.joinPage ? '第四页 · JOIN US' : value > 1 ? 'And · UNION' : value === 1 ? '未竟之塔 · 画廊终点' : value ? '未竟之塔 · 横向画廊' : '未竟之塔 · Introducing JCJS';
+    const changed = scene.getAttribute('aria-label') !== label;
     scene.setAttribute('aria-label', label);
-    notice.textContent = label;
-    pageButton.textContent = value === 1 ? '返回第二页 · 未竟之塔' : value ? '向右浏览画廊' : '进入横向画廊';
+    if (changed) notice.textContent = label;
+    pageButton.textContent = value === gallery.limit ? '返回 JOIN US' : value >= gallery.joinPage ? '查看页脚' : value === gallery.unionPage ? '进入 JOIN US' : value === 1 ? '进入 And · UNION' : value ? '向右浏览画廊' : '进入横向画廊';
   });
   const target = { x: 0, y: 0 };
   const current = { x: 0, y: 0 };
@@ -299,12 +300,9 @@
       preparePrint();
       if (window.requestIdleCallback) requestIdleCallback(gallery.prepareTiles);
     }
-    towerDust.stop();
-    cancelAnimationFrame(frame);
-    frame = 0;
-    lastTime = 0;
-    target.x = current.x;
-    target.y = current.y;
+    towerDust.settle();
+    // Start centering from the last painted depth offsets on the wipe frame.
+    reset(reducedMotion.matches);
     onPrint = toPrint;
     lockedUntil = performance.now() + (reducedMotion.matches ? 0 : 980);
     scene.dataset.page = toPrint ? 'print' : 'landscape';
@@ -317,7 +315,6 @@
   function navigate(forward) {
     if (state.active || performance.now() < lockedUntil) return;
     if (onPrint && (forward || gallery.active)) {
-      towerDust.stop();
       gallery.step(forward);
     } else turnPage(forward);
   }
@@ -337,20 +334,26 @@
     if (event.isPrimary && event.pointerType === 'touch') {
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY, gallery: gallery.active };
 
-      scene.setPointerCapture(event.pointerId);
+      gesture.link = event.target.closest('a[href]');
+      if (!gesture.link) scene.setPointerCapture(event.pointerId);
     }
   });
 
   scene.addEventListener('pointermove', event => {
     if (state.active || performance.now() < lockedUntil || event.target.closest('button')) return;
+    if (gesture?.link && gesture.id === event.pointerId) {
+      // Keep native tap activation until the finger starts a drag.
+      if (Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)<9) return;
+      scene.setPointerCapture(event.pointerId);
+      gesture.link=null;
+    }
     if (onPrint && gesture && gesture.id === event.pointerId && !gesture.gallery &&
         gesture.y-event.clientY > Math.max(8,Math.abs(event.clientX-gesture.x))) {
       gesture.gallery = true;
-      towerDust.stop();
     }
     if (gesture?.gallery && gesture.id === event.pointerId) {
-      if (Math.abs(event.clientY-gesture.y)>Math.abs(event.clientX-gesture.x)) {
-        gallery.scroll((gesture.lastY-event.clientY)*1.8);
+      if (!gesture.used && Math.abs(event.clientY-gesture.y)>Math.abs(event.clientX-gesture.x)) {
+        gesture.used = gallery.scroll((gesture.lastY-event.clientY)*1.8,gesture.y-event.clientY);
       }
       gesture.lastY=event.clientY;
       return;
@@ -391,9 +394,7 @@
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scene.clientHeight : 1;
     wheelDelta += event.deltaY * unit;
     if (onPrint && (gallery.active || event.deltaY > 0) && !wheelUsed && now >= lockedUntil) {
-      if (!gallery.active) towerDust.stop();
-      gallery.scroll(event.deltaY * unit);
-      if (!gallery.target && event.deltaY < 0) wheelUsed = true;
+      wheelUsed = gallery.scroll(event.deltaY * unit,wheelDelta);
       return;
     }
     if (!wheelUsed && Math.abs(wheelDelta) >= 26 && !state.active && now >= lockedUntil) {
@@ -413,7 +414,7 @@
   });
   pageButton.addEventListener('click', () => {
     if (state.active) finishIntro();
-    else if (gallery.target === 1) gallery.seek(0);
+    else if (gallery.target === gallery.limit) gallery.step(false);
     else navigate(true);
   });
   document.addEventListener('fullscreenchange', resize);
@@ -425,7 +426,7 @@
     }
     if (['ArrowDown', 'PageDown', 'End', 'ArrowUp', 'PageUp', 'Home'].includes(event.key)) {
       event.preventDefault();
-      if (onPrint && event.key === 'End' && performance.now() >= lockedUntil) { towerDust.stop(); gallery.seek(1); }
+      if (onPrint && event.key === 'End' && performance.now() >= lockedUntil) { gallery.seek(gallery.limit); }
       else if (gallery.active && event.key === 'Home') gallery.seek(0);
       else navigate(['ArrowDown', 'PageDown', 'End'].includes(event.key));
     } else if (event.key.toLowerCase() === 'f') {
@@ -450,7 +451,13 @@
 
   // ?intro-seek=1 holds the first frame for frame-by-frame review instead of
   // playing, which keeps screenshots comparable across runs.
-  if (new URLSearchParams(location.search).has('intro-seek')) {
+  if (new URLSearchParams(location.search).get('page') === 'join') {
+    finishIntro();
+    turnPage(true);
+    gallery.seek(gallery.joinPage);
+    gallery.finish();
+    lockedUntil = 0;
+  } else if (new URLSearchParams(location.search).has('intro-seek')) {
     if (!reducedMotion.matches) { state.active = true; prepareIntro(); }
   } else {
     startIntro();

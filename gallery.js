@@ -1,5 +1,5 @@
 // Positions are in viewport widths along a single horizontal exhibition.
-window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
+window.createGallery = function (scene, reducedMotion, emblemMotion, sheetEase, onChange) {
   const canvas = scene.querySelector('.gallery');
   const ctx = canvas.getContext('2d');
   const poster = scene.querySelector('.poster');
@@ -30,6 +30,18 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
   const depths = nodes.map(([, , size]) => .78 + Math.min(size, .23) * 2.55);
   const paintOrder = nodes.map((_, index) => index).sort((a, b) => depths[a] - depths[b]);
   const tiles = [];
+  const union = window.createUnionArtwork(ctx, emblemMotion);
+  const unionPage = 1.62;
+  const joinPage = 2, limit = 3;
+  const footer = scene.querySelector('.join-footer');
+  let footerPosition=0, footerVelocity=0, footerWidth=0;
+  const pageDuration = 820;
+  const wipeDuration = 720;
+  let unionStill;
+  let pageTime = 0;
+  const join = window.createJoinPrint(ctx, scene, union, emblemMotion, render, reducedMotion);
+  const finalTime = pageDuration + wipeDuration;
+  const goalTime = () => target >= joinPage ? finalTime : target === unionPage ? pageDuration : 0;
   let width, height, paperWidth, portrait, pos = 0, target = 0, raf = 0, last = 0;
 
   function prepareTiles() {
@@ -37,7 +49,7 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
     for (let i=0;i<12;i++) {
       const tile = document.createElement('canvas');
       tile.width = tile.height = 512;
-      const g = tile.getContext('2d');
+      const g = tile.getContext('2d', {willReadFrequently:true});
       const light = i%3 === 0;
       g.fillStyle = light ? '#e5dfd2' : i%3 === 1 ? '#9b3029' : '#302d28';
       g.fillRect(0,0,512,512);
@@ -45,7 +57,9 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
       const crop = Math.min(img.naturalWidth,img.naturalHeight)*(.48+(i%4)*.12);
       g.globalAlpha = light ? .78 : .72;
       g.globalCompositeOperation = light ? 'multiply' : 'luminosity';
-      g.drawImage(img,(img.naturalWidth-crop)*((i*.37)%1),(img.naturalHeight-crop)*((i*.23+.4)%1),
+      const sx=(img.naturalWidth-crop)*((i*.37)%1), sy=(img.naturalHeight-crop)*((i*.23+.4)%1);
+      if(i===3) union.sampleTower(img,sx,sy,crop);
+      g.drawImage(img,sx,sy,
         crop,crop,0,0,512,512);
       g.globalCompositeOperation = 'source-over'; g.globalAlpha=1;
       if (i%3===1) {
@@ -58,12 +72,14 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
   }
 
   function size() {
+    footerWidth=0;
     width=scene.clientWidth; height=scene.clientHeight;
     portrait=width/height<=.8;
     paperWidth=width/Math.max(width/2560,height/1440);
     const d=Math.min(devicePixelRatio||1,1.5,2100/Math.max(width,height));
     canvas.width=Math.round(width*d); canvas.height=Math.round(height*d);
     ctx.setTransform(canvas.width/width,0,0,canvas.height/height,0,0);
+    unionStill=null;
     if(pos || target) render();
   }
 
@@ -85,11 +101,21 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
     const bevel = (front - tail) * Math.min(13, 17 * height / width);
     overprint.style.clipPath = `polygon(${lip}% 0,100% 0,100% 100%,${lip + bevel}% 100%)`;
     shift('--strip-x', smooth((t - .15) / .65) * 1.015);
-    poster.style.setProperty('--caption-opacity', 1 - smooth(t / .55));
   }
 
   function render() {
     const distance = pos * (approach + end);
+    const joinClock=clamp((pageTime-pageDuration)/wipeDuration);
+    footer.hidden=footerPosition===0;
+    if (!footer.hidden && !footerWidth) footerWidth=footer.offsetWidth;
+    const pan=footerPosition*footerWidth;
+    if (pan>0) {
+      footer.style.transform='translateX('+(footerWidth-pan)+'px)';
+    }
+    join.setInteractive(joinClock === 1 && target >= joinPage,joinClock);
+    join.setPanning(footerPosition>0 || target>joinPage);
+    const clock = clamp(pageTime/pageDuration);
+    const finale = emblemMotion(clock*420).front;
     const camera = distance - approach;
     const unit = Math.min(width, height * (portrait ? .94 : 1.65));
     const endpoint = smooth((camera - end + .47) / .47);
@@ -97,6 +123,16 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
     scene.classList.toggle('in-gallery', !!pos);
     movePoster(distance);
     if (!pos) return;
+    if (joinClock === 1) {
+      join.draw(1,1,width,height,pan);
+      return;
+    }
+    if (joinClock && unionStill) {
+      ctx.drawImage(unionStill,0,0,width,height);
+      join.draw(joinClock,sheetEase(joinClock),width,height);
+      return;
+    }
+    if (!joinClock) unionStill=null;
     ctx.clearRect(0,0,width,height);
     prepareTiles();
     // At camera zero and at the endpoint the frames land on their composed
@@ -120,6 +156,12 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
       if(i===25) return {x,y,w:side*3.1,h:side*.51,alpha:shrink*appear};
       return {x,y,w:side*(i===29?1.12:1),h:side,alpha:shrink*appear};
     });
+    // The sheet rises behind the moving prints and their fibres.
+    if (clock) {
+      const sheet=sheetEase(clamp(clock/.48));
+      union.paper(sheet,clock,width,height);
+    }
+    const shift = i => height * finale * (1.35 + .32*depths[i]);
     // Links meet the moving centers and share the frames' depth falloff.
     ctx.strokeStyle='#63564c'; ctx.lineWidth=.7;
     for(let i=0;i<frames.length;i++) {
@@ -127,25 +169,27 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
       if(a.x<-.55*width || a.x>width*1.1) continue;
       for(const offset of [1,3]) {
         const b=frames[i+offset]; if(!b) continue;
-        ctx.globalAlpha=.46*Math.min(a.alpha,b.alpha);
-        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        ctx.globalAlpha=.46*(1-smooth(finale/.32))*Math.min(a.alpha,b.alpha);
+        ctx.beginPath(); ctx.moveTo(a.x,a.y-shift(i)); ctx.lineTo(b.x,b.y-shift(i+offset)); ctx.stroke();
       }
     }
     for (const i of paintOrder) {
       const f=frames[i];
       if(!f.alpha || f.x+f.w/2<0 || f.x-f.w/2>width) continue;
-      const x=f.x-f.w/2, y=f.y-f.h/2;
+      const x=f.x-f.w/2, y=f.y-f.h/2-shift(i);
       ctx.globalAlpha=f.alpha;
       const tile=tiles[(i===29 ? 3 : i===24 ? 6 : i)%12];
-      if(tile) {
+      if(finale && tile && i!==29) union.trail(finale,width,height,f,i,tile,shift(i));
+      if(tile && y+f.h>=0) {
         const cropHeight=Math.min(tile.height,tile.width*f.h/f.w);
         ctx.drawImage(tile,0,(tile.height-cropHeight)/2,tile.width,cropHeight,x,y,f.w,f.h);
+        ctx.strokeStyle='#31282070'; ctx.lineWidth=.8; ctx.strokeRect(x,y,f.w,f.h);
       }
-      ctx.strokeStyle='#31282070'; ctx.lineWidth=.8; ctx.strokeRect(x,y,f.w,f.h);
+      if(finale && tile && i===29) union.trail(finale,width,height,f,i,tile,shift(i));
     }
     if(endpoint) {
-      ctx.globalAlpha=endpoint;
-      const x=width*(.075+(1-endpoint)*.36), y=height*(portrait?.25:.35);
+      ctx.globalAlpha=endpoint*(1-smooth(finale/.38));
+      const x=width*(.075+(1-endpoint)*.36), y=height*((portrait?.25:.35)-finale*.95);
       const em=Math.min(width*(portrait?.134:.082),height*.17);
       ctx.fillStyle='#25201c';
       ctx.font='italic '+em*.50+'px Didot, Georgia, serif';
@@ -153,47 +197,97 @@ window.createGallery = function (scene, reducedMotion, emblemMotion, onChange) {
       ctx.font=em+'px Didot, Georgia, serif'; ctx.fillText('Tower',x,y+em*.85);
       ctx.fillStyle='#8e3025'; ctx.font='500 '+Math.max(13,em*.17)+'px "Songti SC", serif';
       ctx.fillText('未 竟 之 塔',x,y+em*1.28);
+      if (clock) union.type(finale,clock,width,height,!joinClock);
     }
     ctx.globalAlpha=1;
+    if (joinClock) {
+      unionStill=document.createElement('canvas');
+      unionStill.width=canvas.width; unionStill.height=canvas.height;
+      unionStill.getContext('2d').drawImage(canvas,0,0);
+      join.draw(joinClock,sheetEase(joinClock),width,height);
+    }
   }
 
+  let lastPageFrame = 0;
   function tick(now) {
     const dt=last?Math.min(64,now-last):16; last=now;
     const seconds = dt / 1000;
     const rate = 9, decay = Math.exp(-rate * seconds);
-    const gap = pos - target, slope = velocity + rate * gap;
-    pos = target + (gap + slope * seconds) * decay;
+    const destination = goalTime();
+    const open = destination > 0;
+    const cameraTarget = open || pageTime > 0 ? 1 : target;
+    const gap = pos - cameraTarget, slope = velocity + rate * gap;
+    pos = cameraTarget + (gap + slope * seconds) * decay;
     velocity = (velocity - rate * slope * seconds) * decay;
-    if (Math.abs(target - pos) < .00003 && Math.abs(velocity) < .00035) {
-      pos = target;
+    if (Math.abs(cameraTarget - pos) < .00003 && Math.abs(velocity) < .00035) {
+      pos = cameraTarget;
       velocity = 0;
     }
+    // The footer is a continuation of the fourth sheet. Its camera follows
+    // the scroll target with the same damped response as the gallery.
+    const footerGoal=pageTime===finalTime ? clamp(target-joinPage) : 0;
+    const footerGap=footerPosition-footerGoal;
+    const footerSlope=footerVelocity+rate*footerGap;
+    footerPosition=clamp(footerGoal+(footerGap+footerSlope*seconds)*decay);
+    footerVelocity=(footerVelocity-rate*footerSlope*seconds)*decay;
+    if (Math.abs(footerPosition-footerGoal)<.00003 && Math.abs(footerVelocity)<.00035) {
+      footerPosition=footerGoal;
+      footerVelocity=0;
+    }
+    if(pos === 1 && (destination===finalTime || footerPosition===0)) {
+      const elapsed = lastPageFrame ? now-lastPageFrame : 0;
+      // Rewind the same clock so every layer retraces its entry timing.
+      pageTime += Math.sign(destination-pageTime)*Math.min(elapsed,Math.abs(destination-pageTime));
+      lastPageFrame = now;
+    } else lastPageFrame = 0;
     render();
-    if(pos!==target || velocity) raf=requestAnimationFrame(tick);
-    else {raf=0; last=0;}
+    if(pos!==Math.min(target,1) || velocity || pageTime!==destination || footerPosition!==clamp(target-joinPage) || footerVelocity) raf=requestAnimationFrame(tick);
+    else {raf=0; last=0; lastPageFrame=0;}
   }
   function finish() {
     cancelAnimationFrame(raf);
-    raf=0; last=0; pos=target; velocity=0;
+    raf=0; last=0; lastPageFrame=0; pos=Math.min(target,1); velocity=0;
+    footerPosition=clamp(target-joinPage);footerVelocity=0;
+    pageTime = goalTime();
     render();
   }
   function seek(value) {
     const previous=target;
-    target=clamp(value);
+    target=value>=joinPage ? Math.min(value,limit) : value>1 ? unionPage : clamp(value);
     if(target===previous) return;
+    if (previous<joinPage || target<joinPage) join.setInteractive(false);
     if(!width) size();
     onChange(target);
     if(reducedMotion.matches) finish();
     else if(!raf) raf=requestAnimationFrame(tick);
   }
-  function scroll(delta) {
-    if(!delta) return;
+  function turning() {
+    return pageTime!==goalTime();
+  }
+  function scroll(delta,gestureDistance) {
+    if(turning()) return true;
+    if (target>=joinPage && (target>joinPage || delta>0)) {
+      const distance=150*Math.asinh(delta/150);
+      seek(joinPage+clamp(target-joinPage+distance/Math.max(320,height*.95)));
+      return target===joinPage && delta<0;
+    }
+    if((target===1 && delta>0) || target>1) {
+      if(Math.abs(gestureDistance)<26) return false;
+      step(delta>0);
+      return true;
+    }
     const distance = 150 * Math.asinh(delta / 150);
-    seek(target + distance / (Math.max(480, height) * 3.45));
+    seek(clamp(target + distance / (Math.max(480,height)*3.45)));
+    return target===1 || target===0;
   }
   function step(forward) {
-    seek(forward && !target ? overview : target + (forward ? .18 : -.18));
+    if(turning()) return;
+    if(target>joinPage) seek(forward ? limit : joinPage);
+    else if(target===joinPage) seek(forward ? limit : unionPage);
+    else if(target===unionPage) seek(forward ? joinPage : 1);
+    else if(target===1 && forward) seek(unionPage);
+    else seek(forward && !target ? overview : clamp(target+(forward ? .18 : -.18)));
   }
   return {size,seek,step,finish,prepareTiles,scroll,
-    get active(){return pos>0||target>0;},get target(){return target;}};
+    limit,joinPage,unionPage,get active(){return pos>0||target>0;},get target(){return target;}};
 };

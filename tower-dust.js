@@ -7,6 +7,7 @@ window.createTowerDust = function (tower) {
   const cell = 12, sprite = 32;
   const columns = Math.ceil(width / cell), rows = Math.ceil(height / cell);
   let atlas, erosion, coverage, ctx, print, last, frame = 0, clock = 0;
+  let settleStart = null;
   let grains = [], cuts = [], eddies = [];
 
   function surface(w, h) {
@@ -110,7 +111,10 @@ window.createTowerDust = function (tower) {
     cancelAnimationFrame(frame); frame=0;
     grains.length=cuts.length=eddies.length=0;
     last=null; clock=0;
-    tower.classList.remove('dusting'); canvas.hidden=true;
+    settleStart=null;
+    tower.classList.remove('dusting','dust-settling');
+    tower.style.removeProperty('--dust-return');
+    canvas.hidden=true;
   }
 
   function draw(now) {
@@ -119,7 +123,11 @@ window.createTowerDust = function (tower) {
     grains=grains.filter(p=>now-p.born<p.life);
     cuts=cuts.filter(c=>now-c.born<1100);
     eddies=eddies.filter(e=>now-e.born<1200);
-    if (!grains.length && !cuts.length) { stop(); return; }
+    if (settleStart !== null) {
+      const t = Math.min(1, Math.max(0,(now-settleStart)/480));
+      if (t === 1) { stop(); return; }
+      tower.style.setProperty('--dust-return', t*t*(3-2*t));
+    } else if (!grains.length && !cuts.length) { stop(); return; }
     ctx.clearRect(-bleed,-bleed,width+bleed*2,height+bleed*2);
     ctx.drawImage(print,0,0);
     ctx.globalCompositeOperation='destination-out';
@@ -165,6 +173,7 @@ window.createTowerDust = function (tower) {
   }
 
   function brush(event) {
+    if (settleStart !== null) return;
     const bounds=tower.getBoundingClientRect();
     const x=(event.clientX-bounds.left)*width/bounds.width;
     const y=(event.clientY-bounds.top)*height/bounds.height;
@@ -191,5 +200,11 @@ window.createTowerDust = function (tower) {
       draw(now);
     }
   }
-  return { brush, stop, endStroke() { last=null; } };
+  function settle() {
+    last=null;
+    if (!frame || settleStart !== null) return;
+    settleStart=performance.now();
+    tower.classList.add('dust-settling');
+  }
+  return { brush, stop, settle, endStroke() { last=null; } };
 };
