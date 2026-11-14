@@ -1,0 +1,151 @@
+.foreground {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.scene:not(.intro-running) .foreground {
+  clip-path: inset(0 0 var(--crop-y, 0px));
+}
+.scene[data-page='print'] .foreground {
+  clip-path: inset(0 0 calc(var(--crop-y) + var(--paper-h)));
+}
+.scene {
+  --paper: #eee9df;
+}
+.poster {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--paper-w);
+  height: var(--paper-h);
+  transform: translate(-50%, -50%);
+  background: var(--paper);
+  overflow: hidden;
+  pointer-events: none;
+  clip-path: inset(100% 0 0);
+}
+.scene[data-page='print'] .poster {
+  clip-path: inset(0);
+}
+.print-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--paper);
+  clip-path: inset(0 0 0);
+}
+.scene[data-page='print'] .print-veil {
+  clip-path: inset(0 0 100%);
+}
+.poster canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* The sheet already carries the stone engraving at its leading edge. */
+.print-blade {
+  position: absolute;
+  inset: 0;
+  transform: scale(0.84) rotate(-9deg);
+  opacity: 0;
+}
+.scene[data-page='print'] .print-blade {
+  transform: none;
+  opacity: 1;
+}
+.print-band {
+  clip-path: inset(0 50%);
+}
+.scene[data-page='print'] .print-band {
+  clip-path: inset(0);
+}
+.print-orbits {
+  opacity: 0;
+}
+.scene[data-page='print'] .print-orbits {
+  opacity: 1;
+}
+.print-geometry {
+  position: absolute;
+  inset: 0;
+}
+.print-geometry i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.08);
+}
+.print-meridian {
+  border: 1px solid #4c3a2f35;
+}
+.print-geometry .print-meridian {
+  transform: scaleX(0.28);
+}
+.print-dot {
+  background: #a32b20;
+}
+.print-satellite {
+  background: #292622;
+}
+.scene[data-page='print'] .print-geometry i {
+  opacity: 1;
+  transform: none;
+}
+.tower-dust {
+  position: absolute;
+  left: -224px;
+  top: -224px;
+  pointer-events: none;
+}
+.tower.dusting img {
+  visibility: hidden;
+}
+.tower.dust-settling img {
+  visibility: visible;
+  opacity: var(--dust-return, 0);
+}
+.tower.dust-settling canvas {
+  opacity: calc(1 - var(--dust-return, 0));
+}
+.tower img {
+  position: relative;
+}
+.scene[data-page='print'] .tower img {
+  filter: grayscale(1) contrast(1.22);
+}
+.print-title {
+  position: absolute;
+  inset: 45.4% 0 auto;
+  height: 11.8%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 5.2%;
+  color: #f7f0df;
+  font-family: Didot, 'Bodoni 72', 'Times New Roman', serif;
+  font-style: italic;
+  line-height: 0.82;
+  font-size: min(calc(var(--paper-w) * 0.106), calc(var(--paper-h) * 0.17));
+  letter-spacing: -0.075em;
+  mix-blend-mode: screen;
+}
+.print-title span,
+.print-title img {
+  clip-path: inset(-30% 0 125%);
+  transform: translateY(0.28em);
+}
+.print-title span {
+  font-size: min(calc(var(--paper-w) * 0.071), calc(var(--paper-h) * 0.121));
+}
+.print-title img {
+  width: 26%;
+  height: auto;
+  filter: invert(0.96);
+  transform: translateX(-14%);
+}
+.scene[data-page='print'] .print-title :is(span, img) {
+  clip-path: inset(-30% -8%);
+  transform: none;
+}

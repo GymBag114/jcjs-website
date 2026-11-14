@@ -1,0 +1,48 @@
+/* The paper, meridians and registration marks stay pinned to the viewport.
+   Travel is separate from the transforms used for the first page reveal. */
+.poster .print-overprint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 45.444444%;
+  height: 11.777778%;
+  background: #a32b20;
+  clip-path: inset(0 0 0 100%);
+  visibility: hidden;
+}
+@media (max-aspect-ratio: 4/5) {
+  .poster .print-overprint {
+    top: 79.444444%;
+    height: 7.555556%;
+  }
+}
+.in-gallery .poster .print-overprint {
+  visibility: visible;
+}
+.in-gallery .ring-far {
+  translate: var(--far-ring-x) 0;
+}
+.in-gallery .ring-near {
+  translate: var(--near-ring-x) 0;
+}
+.in-gallery .print-blade {
+  translate: var(--blade-x) 0;
+}
+.in-gallery :is(.print-dots, .print-orbits) {
+  translate: var(--orbit-x) 0;
+}
+.in-gallery .print-satellites {
+  translate: var(--satellite-x) 0;
+}
+.in-gallery :is(.print-band, .print-title, .print-overprint) {
+  translate: var(--strip-x) 0;
+}
+.scene.in-gallery .tower {
+  scale: var(--tower-lift);
+  transition: none;
+}
+@media (max-aspect-ratio: 4/5) {
+  .scene.in-gallery .tower {
+    scale: calc(0.76 * var(--tower-lift));
+  }
+}

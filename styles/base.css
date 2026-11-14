@@ -1,0 +1,119 @@
+/* All artwork is placed in the original 2560 × 1440 coordinate system. */
+:root {
+  color-scheme: light;
+  background: #ded3c6;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  overscroll-behavior: none;
+}
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+  background: #ded3c6;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2560px;
+  height: 1440px;
+  transform: translate(-50%, -50%) scale(calc(var(--scene-scale, 1) * var(--intro-zoom, 1)));
+  transform-origin: center;
+}
+.plane {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+}
+.plane img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+/* Stacking, back to front: sky, emblem, tower, stones, ground.
+   artwork/sources/sky.png is a complete opaque plate, so nothing can be uncovered any more.
+   It is overscanned by 1.2% instead of mirrored, so its edges stay outside the
+   frame and no reflection seam can appear. The stones are painted into that
+   plate as well, so the stones plane rides at exactly the same depth - one
+   transform, no double image, and the mark still passes behind the slabs. */
+.sky {
+  left: -15.5px;
+  top: -8.5px;
+  width: 2591px;
+  height: 1457px;
+}
+/* The logo is a brand lockup, not scenery: it is centred in the frame and
+   never cropped, keeping the reference proportion (93.75% of the width). */
+.emblem {
+  left: 50%;
+  top: 50%;
+  width: var(--emblem-width, 2400px);
+  height: calc(var(--emblem-width, 2400px) / 7);
+  margin-left: calc(var(--emblem-width, 2400px) / -2);
+  margin-top: calc(var(--emblem-width, 2400px) / -14);
+}
+.emblem-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  clip-path: inset(0 -100vw);
+}
+.intro-pending .emblem-mark {
+  visibility: hidden;
+}
+.tower {
+  left: 902px;
+  top: 72px;
+  width: 756px;
+  height: 1133px;
+}
+/* The stones are already painted into .sky, so this plane must land on exactly
+   the same pixels: it carries the sky's overscan instead of the raw artwork
+   size, i.e. artwork (593,449) 1309x496 mapped through the sky plate. */
+.stones {
+  left: 584.681px;
+  top: 445.801px;
+  width: 1324.851px;
+  height: 501.856px;
+}
+/* The plaza is the nearest plane: mirrored overscan left, right and below,
+   all wider than the 40 / 22px it can slide. What a slide uncovers shows the
+   opaque sky plate underneath, never blank paper. */
+.ground {
+  left: -48px;
+  top: 827px;
+  width: 2656px;
+  height: 641px;
+}
+.static-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}

@@ -1,0 +1,48 @@
+/* One symmetric interpolation makes every layer retrace the same path. */
+.scene[data-page]
+  :is(
+    .poster,
+    .foreground,
+    .print-veil,
+    .print-blade,
+    .print-band,
+    .print-orbits,
+    .print-geometry i,
+    .print-title span,
+    .print-title img
+  ) {
+  transition-property: opacity, transform, clip-path, filter, scale;
+  transition-duration: 980ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+  transition-delay: 0ms;
+}
+/* The logo settles gently; its return uses the exact inverse curve. */
+.scene[data-page] .print-title img {
+  clip-path: none;
+  opacity: 0;
+  transform: translate3d(-24px, 0, 0);
+  transition-property: transform, opacity;
+  transition-timing-function: cubic-bezier(0.75, 0, 0.78, 0.39);
+}
+.scene[data-page='print'] .print-title img {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition-timing-function: cubic-bezier(0.22, 0.61, 0.25, 1);
+}
+/* Pointer parallax retains its own frame-based damping. */
+.scene[data-page] .tower {
+  transition: scale 980ms cubic-bezier(0.4, 0, 0.6, 1);
+}
+.scene[data-page] .tower img {
+  transition: filter 980ms cubic-bezier(0.4, 0, 0.6, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene *,
+  .scene:not(.intro-running) .foreground,
+  .scene[data-page='print'] .print-title {
+    transition: none !important;
+  }
+  .plane {
+    will-change: auto;
+  }
+}

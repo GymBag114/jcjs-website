@@ -1,0 +1,40 @@
+/* Opening sequence */
+.scene-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.intro {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.intro-pending .scene {
+  background: #050505;
+}
+.intro-pending .intro:not([hidden]) {
+  display: block;
+}
+.intro-pending .scene-viewport {
+  opacity: 0;
+}
+
+.intro-figure {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.intro-stroke {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}

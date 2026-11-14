@@ -1,0 +1,66 @@
+/* The canvas prints both colours of the lettering; the overlay follows its
+   visible bounds and supplies a focusable hover/touch target. */
+.join-impression {
+  position: absolute;
+}
+.join-impression:focus-visible {
+  outline: 1px solid #a33428;
+  outline-offset: 4px;
+}
+
+.join-footer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  pointer-events: none;
+  color: #eee9df;
+  overflow: hidden;
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2vw, 32px);
+  padding-inline-start: clamp(16px, 2vw, 32px);
+}
+.join-footer[hidden] {
+  display: none;
+}
+.footer-copy-slot {
+  position: relative;
+  --copy-gap: clamp(10px, 1.25vw, 22px);
+  font:
+    400 clamp(14px, min(1.65vw, 3vh), 24px)/1.35 'Songti SC',
+    'Noto Serif CJK SC',
+    Georgia,
+    serif;
+  /* After rotation the two line boxes and their gap occupy this width. */
+  width: calc(2.7em + var(--copy-gap));
+}
+.footer-copy {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: var(--copy-gap);
+  width: max-content;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  white-space: nowrap;
+  letter-spacing: 0.07em;
+  text-align: center;
+}
+.footer-copy p {
+  margin: 0;
+}
+.footer-logo {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 100svh;
+  height: auto;
+  transform: rotate(-90deg) translate(50%, -100%);
+  transform-origin: top right;
+  filter: invert(0.94);
+}
+/* Reserve the rotated 7:1 mark's actual width in the footer flow. */
+.join-footer::after {
+  content: '';
+  width: calc(100svh / 7);
+}

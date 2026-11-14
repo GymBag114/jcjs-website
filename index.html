@@ -1,102 +1,151 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#e5ddd1">
-  <meta name="description" content="异境与未竟之塔，红黑风景与一幅建筑版画。">
-  <title>JCJS · 异境</title>
-  <link rel="icon" href="JCJS_LOGO.svg" type="image/svg+xml">
-  <script>
-    // Claim the black stage before the first paint; an unavailable script must
-    // never leave a black screen behind, so the class is released on a timer.
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      document.documentElement.classList.add('intro-pending');
-      window.introSafetyTimer = setTimeout(() => document.documentElement.classList.remove('intro-pending'), 9000);
-    }
-  </script>
-  <link rel="stylesheet" href="style.css?v=36">
-  <script src="poster.js?v=12" defer></script>
-  <script src="tower-dust.js?v=6" defer></script>
-  <script src="union.js?v=16" defer></script>
-  <script src="join-artwork.js?v=6" defer></script>
-  <script src="join-print.js?v=16" defer></script>
-  <script src="gallery.js?v=30" defer></script>
-  <script src="script.js?v=30" defer></script>
-</head>
-<body>
-  <main class="scene" data-page="landscape" aria-label="异境">
-    <div class="scene-viewport">
-      <div class="world" aria-hidden="true">
-        <div class="plane sky" data-depth="0.15"><img src="assets/sky.webp" alt="" width="2591" height="1457" fetchpriority="high" draggable="false"></div>
-        <div class="plane emblem" data-depth="0.36">
-          <svg class="emblem-mark" viewBox="0 0 35 5" aria-hidden="true" focusable="false">
-            <g transform="translate(0 5) scale(1 -1)" fill="black" stroke="black" stroke-width=".04" stroke-linejoin="round">
-              <g data-emblem-part="left-tail">
-                <polygon points="0,0 10,5 11,5 1,0"/>
-                <polygon points="7,0 11,0 10,0.5 6,0.5"/>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#e5ddd1" />
+    <meta name="description" content="异境与未竟之塔，红黑风景与一幅建筑版画。" />
+    <title>JCJS · 异境</title>
+    <link rel="icon" href="assets/brand/jcjs-logo.svg" type="image/svg+xml" />
+    <script>
+      // Claim the black stage before the first paint; an unavailable script must
+      // never leave a black screen behind, so the class is released on a timer.
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.documentElement.classList.add('intro-pending');
+        window.introSafetyTimer = setTimeout(
+          () => document.documentElement.classList.remove('intro-pending'),
+          9000,
+        );
+      }
+    </script>
+    <link rel="stylesheet" href="styles/base.css" />
+    <link rel="stylesheet" href="styles/intro.css" />
+    <link rel="stylesheet" href="styles/poster.css" />
+    <link rel="stylesheet" href="styles/accessibility.css" />
+    <link rel="stylesheet" href="styles/transitions.css" />
+    <link rel="stylesheet" href="styles/gallery.css" />
+    <link rel="stylesheet" href="styles/join.css" />
+    <script type="module" src="src/main.js"></script>
+  </head>
+  <body>
+    <main class="scene" data-page="landscape" aria-label="异境">
+      <div class="scene-viewport">
+        <div class="world" aria-hidden="true">
+          <div class="plane sky" data-depth="0.15">
+            <img
+              src="assets/images/sky.webp"
+              alt=""
+              width="2591"
+              height="1457"
+              fetchpriority="high"
+              draggable="false"
+            />
+          </div>
+          <div class="plane emblem" data-depth="0.36">
+            <svg class="emblem-mark" viewBox="0 0 35 5" aria-hidden="true" focusable="false">
+              <g
+                transform="translate(0 5) scale(1 -1)"
+                fill="black"
+                stroke="black"
+                stroke-width=".04"
+                stroke-linejoin="round"
+              >
+                <g data-emblem-part="left-tail">
+                  <polygon points="0,0 10,5 11,5 1,0" />
+                  <polygon points="7,0 11,0 10,0.5 6,0.5" />
+                </g>
+                <g data-emblem-part="left-stem">
+                  <polygon points="11,5 12,5 12,0 11,0" />
+                </g>
+                <g data-emblem-part="left-front">
+                  <polygon points="12,5 13,5 17,3 16.5,2.75" />
+                  <polygon points="12,0 13,0 23,5 22,5" />
+                </g>
+                <g data-emblem-part="right-front">
+                  <polygon points="18,2 18.5,2.25 23,0 22,0" />
+                </g>
+                <g data-emblem-part="right-stem">
+                  <polygon points="23,4.5 24,5 24,0 23,0" />
+                </g>
+                <g data-emblem-part="right-tail">
+                  <polygon points="24,5 34,5 35,4.5 25,4.5" />
+                  <polygon points="24,0.5 34,0.5 35,0 25,0" />
+                  <polygon points="26,4 27,4 33,1 32,1" />
+                </g>
               </g>
-              <g data-emblem-part="left-stem">
-                <polygon points="11,5 12,5 12,0 11,0"/>
-              </g>
-              <g data-emblem-part="left-front">
-                <polygon points="12,5 13,5 17,3 16.5,2.75"/>
-                <polygon points="12,0 13,0 23,5 22,5"/>
-              </g>
-              <g data-emblem-part="right-front">
-                <polygon points="18,2 18.5,2.25 23,0 22,0"/>
-              </g>
-              <g data-emblem-part="right-stem">
-                <polygon points="23,4.5 24,5 24,0 23,0"/>
-              </g>
-              <g data-emblem-part="right-tail">
-                <polygon points="24,5 34,5 35,4.5 25,4.5"/>
-                <polygon points="24,0.5 34,0.5 35,0 25,0"/>
-                <polygon points="26,4 27,4 33,1 32,1"/>
-              </g>
-            </g>
-          </svg>
-        </div>
-        <div class="poster">
-          <canvas class="print-masses"></canvas>
-          <div class="print-geometry print-meridians"></div>
-          <canvas class="gallery" hidden></canvas>
-          <canvas class="print-ring ring-far"></canvas>
-          <canvas class="print-ring ring-near"></canvas>
-          <div class="print-blade"><canvas></canvas></div>
-          <canvas class="print-band"></canvas>
-          <canvas class="print-orbits"></canvas>
-          <div class="print-geometry print-dots"></div>
-          <div class="print-geometry print-satellites"></div>
-          <div class="print-title" lang="en"><span>Introducing</span><img src="JCJS_LOGO.svg" alt="JCJS"></div>
-          <canvas class="print-overprint"></canvas>
-          <div class="print-veil"></div>
-        </div>
-        <div class="plane tower" data-depth="0.72"><img src="塔.png" alt="" width="756" height="1133" draggable="false"><canvas class="tower-dust" hidden></canvas></div>
-        <div class="foreground">
-          <div class="plane stones" data-depth="0.15"><img src="石头.png" alt="" width="1309" height="496" draggable="false"></div>
-          <div class="plane ground" data-depth="1"><img src="assets/ground.webp" alt="" width="2656" height="641" draggable="false"></div>
+            </svg>
+          </div>
+          <div class="poster">
+            <canvas class="print-masses"></canvas>
+            <div class="print-geometry print-meridians"></div>
+            <canvas class="gallery" hidden></canvas>
+            <canvas class="print-ring ring-far"></canvas>
+            <canvas class="print-ring ring-near"></canvas>
+            <div class="print-blade"><canvas></canvas></div>
+            <canvas class="print-band"></canvas>
+            <canvas class="print-orbits"></canvas>
+            <div class="print-geometry print-dots"></div>
+            <div class="print-geometry print-satellites"></div>
+            <div class="print-title" lang="en">
+              <span>Introducing</span><img src="assets/brand/jcjs-logo.svg" alt="JCJS" />
+            </div>
+            <canvas class="print-overprint"></canvas>
+            <div class="print-veil"></div>
+          </div>
+          <div class="plane tower" data-depth="0.72">
+            <img
+              src="assets/images/tower.png"
+              alt=""
+              width="756"
+              height="1133"
+              draggable="false"
+            /><canvas class="tower-dust" hidden></canvas>
+          </div>
+          <div class="foreground">
+            <div class="plane stones" data-depth="0.15">
+              <img
+                src="assets/images/stones.png"
+                alt=""
+                width="1309"
+                height="496"
+                draggable="false"
+              />
+            </div>
+            <div class="plane ground" data-depth="1">
+              <img
+                src="assets/images/ground.webp"
+                alt=""
+                width="2656"
+                height="641"
+                draggable="false"
+              />
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="intro" hidden aria-hidden="true">
-      <svg class="intro-figure" focusable="false" aria-hidden="true">
-        <path class="intro-stroke" pathLength="1"/>
-      </svg>
-    </div>
-    <a class="join-impression" href="https://silandri.top/" aria-label="JOIN US" hidden></a>
-    <footer class="join-footer" hidden>
-      <div class="footer-copy-slot">
-        <div class="footer-copy">
-          <p>JCJS隶属于SILANDRI。</p>
-          <p>本页面由C.S.T.F.完成设计。</p>
-        </div>
+      <div class="intro" hidden aria-hidden="true">
+        <svg class="intro-figure" focusable="false" aria-hidden="true">
+          <path class="intro-stroke" pathLength="1" />
+        </svg>
       </div>
-      <img class="footer-logo" src="JCJS_LOGO.svg" alt="JCJS">
-    </footer>
-    <button class="page-turn" type="button">进入第二页 · 未竟之塔</button>
-    <p class="sr-only notice" role="status" aria-live="polite"></p>
-  </main>
-  <noscript><img class="static-fallback" src="完整画面.png" alt="红黑异境静态画面"></noscript>
-</body>
+      <a class="join-impression" href="https://silandri.top/" aria-label="JOIN US" hidden></a>
+      <footer class="join-footer" hidden>
+        <div class="footer-copy-slot">
+          <div class="footer-copy">
+            <p>JCJS隶属于SILANDRI。</p>
+            <p>本页面由C.S.T.F.完成设计。</p>
+          </div>
+        </div>
+        <img class="footer-logo" src="assets/brand/jcjs-logo.svg" alt="JCJS" />
+      </footer>
+      <button class="page-turn" type="button">进入第二页 · 未竟之塔</button>
+      <p class="sr-only notice" role="status" aria-live="polite"></p>
+    </main>
+    <noscript
+      ><img
+        class="static-fallback"
+        src="assets/images/landscape-fallback.png"
+        alt="红黑异境静态画面"
+    /></noscript>
+  </body>
 </html>
