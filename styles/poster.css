@@ -12,13 +12,13 @@
 .scene {
   --paper: #eee9df;
 }
+/* The print sits between the two landscape layers at its actual display size. */
 .poster {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: var(--paper-w);
-  height: var(--paper-h);
-  transform: translate(-50%, -50%);
+  inset: 0;
+  --paper-w: 100vw;
+  --paper-h: 100vh;
+  --paper-h: 100svh;
   background: var(--paper);
   overflow: hidden;
   pointer-events: none;
@@ -26,16 +26,6 @@
 }
 .scene[data-page='print'] .poster {
   clip-path: inset(0);
-}
-.print-veil {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: var(--paper);
-  clip-path: inset(0 0 0);
-}
-.scene[data-page='print'] .print-veil {
-  clip-path: inset(0 0 100%);
 }
 .poster canvas {
   position: absolute;
@@ -78,7 +68,7 @@
   transform: scale(0.08);
 }
 .print-meridian {
-  border: 1px solid #4c3a2f35;
+  border: calc(1px * var(--scene-scale)) solid #4c3a2f35;
 }
 .print-geometry .print-meridian {
   transform: scaleX(0.28);

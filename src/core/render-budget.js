@@ -15,3 +15,16 @@ export function canvasDensity(width, height, maxEdge = 1800) {
     Math.sqrt(pixels / (width * height)),
   );
 }
+
+// The visible print carries type and fine lines. Sample it at display density
+// within a separate per-surface cap; texture and particle buffers stay smaller.
+export function printDensity(width, height, fineDetail = true) {
+  const detailBudget = constrainedRendering ? 3_600_000 : 8_400_000;
+  const textureBudget = constrainedRendering ? 1_600_000 : 3_600_000;
+  const pixels = fineDetail ? detailBudget : textureBudget;
+  return Math.min(
+    devicePixelRatio || 1,
+    4096 / Math.max(width, height),
+    Math.sqrt(pixels / (width * height)),
+  );
+}

@@ -26,7 +26,6 @@ function edgePosition(samples, frame) {
 
 export function createIntro({
   scene,
-  world,
   viewport,
   pageButton,
   reducedMotion,
@@ -122,7 +121,7 @@ export function createIntro({
     outline.style.opacity = String(1 - opening);
     viewport.style.clipPath = `inset(${insetY}px ${insetX}px)`;
     viewport.style.opacity = String(easeWindow(progress(t, TL.imageIn, TL.imageReady)));
-    world.style.setProperty('--intro-zoom', String(lerp(s / (1440 * scale), 1, opening)));
+    viewport.style.setProperty('--intro-zoom', String(lerp(s / (1440 * scale), 1, opening)));
 
     renderEmblem(t);
   }
@@ -130,7 +129,7 @@ export function createIntro({
   function clearIntroStyles() {
     viewport.style.opacity = '';
     viewport.style.clipPath = '';
-    world.style.removeProperty('--intro-zoom');
+    viewport.style.removeProperty('--intro-zoom');
     outline.style.opacity = '';
     outline.style.strokeDashoffset = '';
     emblem.style.visibility = '';

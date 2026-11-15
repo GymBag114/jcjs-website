@@ -3,13 +3,12 @@ import { createParallax } from './effects/parallax.js';
 import { createGallery } from './gallery/gallery.js';
 import { bindNavigation } from './gallery/navigation.js';
 import { createTowerDust } from './effects/tower-dust.js';
-import { drawTowerPrint } from './artwork/poster.js';
+import { placeTowerGeometry, stageTowerPrint } from './artwork/poster.js';
 import { createIntro } from './intro/intro.js';
 import { bezier, emblemMotion } from './core/motion.js';
 
 const scene = document.querySelector('.scene');
 scene.classList.toggle('render-constrained', constrainedRendering);
-const world = document.querySelector('.world');
 const viewport = document.querySelector('.scene-viewport');
 const planes = [...document.querySelectorAll('[data-depth]')].map((element) => ({
   element,
@@ -20,8 +19,9 @@ const notice = document.querySelector('.notice');
 const themeColor = document.querySelector('meta[name="theme-color"]');
 let onPrint = false;
 let lockedUntil = 0;
-let printWidth = 0,
-  printHeight = 0;
+let printReady = false;
+let printStages = null;
+let warmIdle = 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const towerDust = createTowerDust(document.querySelector('.tower'));
 const gallery = createGallery(
@@ -66,14 +66,13 @@ const parallax = createParallax(planes, reducedMotion);
 
 const intro = createIntro({
   scene,
-  world,
   viewport,
   pageButton,
   reducedMotion,
   onReset: () => reset(true),
   onFinish() {
     pageButton.textContent = '进入第二页 · 未竟之塔';
-    // Allocate the poster only when requested, never during the opening.
+    scheduleWarmup();
   },
 });
 
@@ -95,10 +94,11 @@ function resize() {
   const scale = Math.max(scene.clientWidth / 2560, scene.clientHeight / 1440);
   scene.style.setProperty('--scene-scale', String(scale));
   const height = scene.clientHeight / scale;
-  scene.style.setProperty('--paper-w', scene.clientWidth / scale + 'px');
   scene.style.setProperty('--paper-h', height + 'px');
   scene.style.setProperty('--crop-y', (1440 - height) / 2 + 'px');
+  invalidatePrint();
   if (onPrint) preparePrint();
+  else scheduleWarmup();
   gallery.size();
   // The mark is a lockup, not scenery: it keeps 93.75% of the visible width
   // (exactly 2400 artwork px at 16:9) and stays centred, so a narrow window
@@ -114,18 +114,53 @@ function reset(immediate = false) {
   parallax.reset(immediate);
 }
 
+// The iterator writes into the displayed canvases. Any change of inputs
+// invalidates both the finished print and partially drawn layers together.
+function invalidatePrint() {
+  printReady = false;
+  printStages = null;
+}
+
+function advancePrint() {
+  printStages ||= stageTowerPrint(measuredWidth, measuredHeight);
+  if (printStages.next().done) {
+    printReady = true;
+    printStages = null;
+  }
+}
+
+function canWarm() {
+  return !constrainedRendering && !document.hidden && !onPrint && !intro.active;
+}
+
+function scheduleWarmup() {
+  if (warmIdle || !canWarm()) return;
+  if (typeof requestIdleCallback === 'function')
+    warmIdle = requestIdleCallback(warmNext, { timeout: 250 });
+  else warmIdle = setTimeout(warmNext, 32);
+}
+
+function warmNext(deadline) {
+  warmIdle = 0;
+  if (!canWarm() || !measuredWidth || !measuredHeight) return;
+  do {
+    if (!printReady) advancePrint();
+    else if (!gallery.warmNextTile()) return;
+  } while (deadline && deadline.timeRemaining() > 4);
+  scheduleWarmup();
+}
+
 function preparePrint() {
-  const width = scene.clientWidth,
-    height = scene.clientHeight;
-  if (width === printWidth && height === printHeight) return;
-  drawTowerPrint(width, height);
-  printWidth = width;
-  printHeight = height;
+  if (!measuredWidth || !measuredHeight) return;
+  placeTowerGeometry(measuredWidth, measuredHeight);
+  while (!printReady) advancePrint();
 }
 
 function turnPage(toPrint) {
   if (intro.active || toPrint === onPrint || performance.now() < lockedUntil) return;
   if (toPrint) {
+    // Some browsers defer resolution/resize events until the next interaction.
+    resize();
     preparePrint();
   }
   towerDust.settle();
@@ -134,6 +169,7 @@ function turnPage(toPrint) {
   onPrint = toPrint;
   lockedUntil = performance.now() + (reducedMotion.matches ? 0 : 980);
   scene.dataset.page = toPrint ? 'print' : 'landscape';
+  if (!toPrint) scheduleWarmup();
   scene.setAttribute('aria-label', toPrint ? '未竟之塔 · Introducing JCJS' : '异境');
   themeColor.content = toPrint ? '#eee9df' : '#e5ddd1';
   pageButton.textContent = toPrint ? '进入横向画廊' : '进入第二页 · 未竟之塔';
@@ -206,9 +242,21 @@ document.addEventListener('visibilitychange', () => {
     towerDust.stop();
     if (intro.active) intro.finish();
     reset(true);
-  }
+  } else scheduleWarmup();
 });
 window.addEventListener('resize', resize, { passive: true });
+// Moving the window to another display can change DPR without a CSS resize.
+function watchPixelRatio() {
+  matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener(
+    'change',
+    () => {
+      resize();
+      watchPixelRatio();
+    },
+    { once: true },
+  );
+}
+watchPixelRatio();
 reducedMotion.addEventListener('change', () => {
   parallax.setPaused(reducedMotion.matches);
   if (reducedMotion.matches && intro.active) intro.finish();
@@ -275,8 +323,10 @@ for (const image of document.querySelectorAll('.plane img')) {
   image.addEventListener(
     'load',
     () => {
-      printWidth = 0;
+      // A photograph that arrives late changes the print it is inked from.
+      invalidatePrint();
       if (onPrint) preparePrint();
+      else scheduleWarmup();
       if (gallery.active) gallery.size();
     },
     { once: true },

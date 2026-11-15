@@ -2,26 +2,43 @@ import { drawPrintStock } from '../artwork/paper.js';
 
 // Cache the print passes; only the limb registration and ray geometry move.
 export function makeJoinSheet(canvas, w, h, plateRight, emblemMotion) {
-  function layer() {
-    const plate = document.createElement('canvas');
-    plate.width = canvas.width;
-    plate.height = canvas.height;
-    const ink = plate.getContext('2d');
-    ink.scale(plate.width / w, plate.height / h);
-    return { plate, ink };
-  }
-  const paper = layer(),
-    dark = layer(),
-    orbits = layer(),
-    satellite = layer();
-  let g = paper.ink;
-  drawPrintStock(g, w, h, true);
   const y = h / 2;
   const r = Math.min(h * 0.158, w * 0.152, (w - plateRight) * 0.48);
   const moon = Math.max(w * 0.838, plateRight + r + 1);
   const cx = Math.min(w - r - 1, moon);
   const source = w * 0.494;
   const hair = Math.max(0.47, Math.min(0.95, w / 950));
+  const densityX = canvas.width / w,
+    densityY = canvas.height / h;
+  // Keep the same pixel grid as the visible sheet. Transparent margins around
+  // the orbit and satellite would otherwise cost two full high-DPI canvases.
+  function layer(left = 0, top = 0, right = w, bottom = h) {
+    const x = Math.max(0, Math.floor(left * densityX));
+    const y = Math.max(0, Math.floor(top * densityY));
+    const plate = document.createElement('canvas');
+    plate.width = Math.max(1, Math.min(canvas.width, Math.ceil(right * densityX)) - x);
+    plate.height = Math.max(1, Math.min(canvas.height, Math.ceil(bottom * densityY)) - y);
+    const ink = plate.getContext('2d');
+    ink.setTransform(densityX, 0, 0, densityY, -x, -y);
+    return {
+      ink,
+      draw(ctx, offset = 0) {
+        ctx.drawImage(
+          plate,
+          offset + x / densityX,
+          y / densityY,
+          plate.width / densityX,
+          plate.height / densityY,
+        );
+      },
+    };
+  }
+  const ringReach = r * 1.68 + 2;
+  const paper = layer();
+  const orbits = layer(cx - ringReach, y - ringReach, cx + ringReach, y + ringReach);
+  const satellite = layer(cx - r - 2, y - r - 2, cx + r + 2, y + r + 2);
+  let g = paper.ink;
+  drawPrintStock(g, w, h, true);
   function line(x0, y0, x1, y1, color, width = hair) {
     g.strokeStyle = color;
     g.lineWidth = width;
@@ -44,6 +61,7 @@ export function makeJoinSheet(canvas, w, h, plateRight, emblemMotion) {
   const sag = Math.min(w * 0.125, (rim - plateRight) * 0.48);
   const rx = w * 1.85,
     ry = y / Math.sqrt(1 - (1 - sag / rx) ** 2);
+  const dark = layer();
   g = dark.ink;
   g.save();
   g.translate(rim - rx, y);
@@ -181,11 +199,11 @@ export function makeJoinSheet(canvas, w, h, plateRight, emblemMotion) {
         ctx.fillStyle = '#050505';
         ctx.fillRect(w - 1, 0, extension + 2, h);
       }
-      ctx.drawImage(paper.plate, 0, 0, w, h);
-      ctx.drawImage(dark.plate, offset, 0, w, h);
+      paper.draw(ctx);
+      dark.draw(ctx, offset);
       ctx.save();
       ctx.globalAlpha = ease((clock - 0.08) / 0.84);
-      ctx.drawImage(orbits.plate, orbitOffset, 0, w, h);
+      orbits.draw(ctx, orbitOffset);
       if (extension > 0) {
         // The rings were cached to one viewport. Engrave their remaining
         // arcs on the adjoining black stock as the camera crosses its edge.
@@ -238,13 +256,7 @@ export function makeJoinSheet(canvas, w, h, plateRight, emblemMotion) {
         }
         ctx.globalAlpha = 1;
       }
-      ctx.drawImage(
-        satellite.plate,
-        (w - rim + softness) * 0.65 * (1 - satelliteMove.front),
-        0,
-        w,
-        h,
-      );
+      satellite.draw(ctx, (w - rim + softness) * 0.65 * (1 - satelliteMove.front));
     },
   };
 }

@@ -102,7 +102,14 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
   }
 
   function measure(w, h) {
-    if (layout?.w === w && layout.h === h) return layout;
+    const { width: pixelsW, height: pixelsH } = ctx.canvas;
+    if (
+      layout?.w === w &&
+      layout.h === h &&
+      layout.pixelsW === pixelsW &&
+      layout.pixelsH === pixelsH
+    )
+      return layout;
     const originalWidth = Math.min(w * (w < h ? 0.86 : 0.67), h * 1.42);
     const originalHeight = Math.min(originalWidth / (w < h ? 1.85 : 2.48), h * 0.46);
     const pins = union.pinGeometry(1, w, h).sort((a, b) => a.y - b.y);
@@ -126,6 +133,8 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     layout = {
       w,
       h,
+      pixelsW,
+      pixelsH,
       width,
       height,
       left,

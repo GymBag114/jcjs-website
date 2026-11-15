@@ -19,24 +19,9 @@
 .in-gallery .poster .print-overprint {
   visibility: visible;
 }
-.in-gallery .ring-far {
-  translate: var(--far-ring-x) 0;
-}
-.in-gallery .ring-near {
-  translate: var(--near-ring-x) 0;
-}
-.in-gallery .print-blade {
-  translate: var(--blade-x) 0;
-}
-.in-gallery :is(.print-dots, .print-orbits) {
-  translate: var(--orbit-x) 0;
-}
-.in-gallery .print-satellites {
-  translate: var(--satellite-x) 0;
-}
-.in-gallery :is(.print-band, .print-title, .print-overprint) {
-  translate: var(--strip-x) 0;
-}
+/* The travelling layers get their offsets written straight onto themselves by
+   gallery.js. A shared custom property here would be inherited by every print
+   layer and restyle the whole poster subtree on every pan frame. */
 .scene.in-gallery .tower {
   scale: var(--tower-lift);
   transition: none;

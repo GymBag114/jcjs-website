@@ -1,4 +1,4 @@
-import { canvasDensity } from '../core/render-budget.js';
+import { printDensity } from '../core/render-budget.js';
 import { createUnionArtwork } from '../artwork/union.js';
 import { createJoinPrint } from '../join/join-print.js';
 
@@ -46,6 +46,16 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   const poster = scene.querySelector('.poster');
   const towerPlane = scene.querySelector('.tower');
   const overprint = scene.querySelector('.print-overprint');
+  // The eight print layers that travel with the camera. Offsets are written
+  // straight onto them so no inherited property invalidates the poster subtree.
+  const ringFar = poster.querySelector('.ring-far');
+  const ringNear = poster.querySelector('.ring-near');
+  const blade = poster.querySelector('.print-blade');
+  const dots = poster.querySelector('.print-dots');
+  const orbitLayer = poster.querySelector('.print-orbits');
+  const satellites = poster.querySelector('.print-satellites');
+  const band = poster.querySelector('.print-band');
+  const title = poster.querySelector('.print-title');
   const sky = scene.querySelector('.sky img');
   const ground = scene.querySelector('.ground img');
   const tower = scene.querySelector('.tower img');
@@ -174,6 +184,18 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     return tile;
   }
 
+  function nodeTile(i) {
+    return getTile((i === 29 ? 3 : i === 24 ? 6 : i) % 12, labels.get(i));
+  }
+
+  let nextTile = 0;
+  function warmNextTile() {
+    if (nextTile === nodes.length) return false;
+    if (![sky, ground, tower].every((image) => image.complete && image.naturalWidth)) return false;
+    nodeTile(nextTile++);
+    return nextTile < nodes.length;
+  }
+
   let lastPosterDistance;
 
   function size() {
@@ -191,26 +213,33 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   }
 
   function allocateCanvas() {
-    const d = canvasDensity(width, height, 2100);
+    const d = printDensity(width, height);
     const w = Math.max(1, Math.round(width * d));
     const h = Math.max(1, Math.round(height * d));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-      ctx.setTransform(w / width, 0, 0, h / height, 0, 0);
-    }
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    ctx.setTransform(w / width, 0, 0, h / height, 0, 0);
   }
 
   function movePoster(distance) {
     if (lastPosterDistance === distance) return;
     lastPosterDistance = distance;
     const t = Math.min(distance / approach, 2.15);
-    const shift = (name, widths) => poster.style.setProperty(name, -widths * paperWidth + 'px');
-    shift('--far-ring-x', t * 0.74);
-    shift('--near-ring-x', t * (portrait ? 1.91 : 1.31));
-    shift('--blade-x', t * 1.09);
-    shift('--orbit-x', t * 1.31);
-    shift('--satellite-x', t * 1.52);
+    // A custom property on the poster would inherit into every print layer and
+    // restyle the whole subtree on every frame of the pan.
+    // On return to the poster the class-based rules used to disappear, so the
+    // inline value must be cleared; inside the gallery every layer keeps a
+    // resolved length, `0px` rather than `none`, because a resolved zero keeps
+    // the layer's transform node and its clip-path antialiasing identical.
+    const slide = (element, widths) => {
+      element.style.translate = t === 0 ? '' : -widths * width + 'px 0';
+    };
+    slide(ringFar, t * 0.74);
+    slide(ringNear, t * (portrait ? 1.91 : 1.31));
+    slide(blade, t * 1.09);
+    slide(dots, t * 1.31);
+    slide(orbitLayer, t * 1.31);
+    slide(satellites, t * 1.52);
     towerPlane.style.translate = -t * (paperWidth * 1.36 + 200) + 'px 0';
     towerPlane.style.setProperty('--tower-lift', 1 + 0.045 * Math.min(t, 1));
 
@@ -220,7 +249,10 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     const lip = 98.4 * (1 - front);
     const bevel = (front - tail) * Math.min(13, (17 * height) / width);
     overprint.style.clipPath = `polygon(${lip}% 0,100% 0,100% 100%,${lip + bevel}% 100%)`;
-    shift('--strip-x', smooth((t - 0.15) / 0.65) * 1.015);
+    const strip = smooth((t - 0.15) / 0.65) * 1.015;
+    slide(band, strip);
+    slide(title, strip);
+    slide(overprint, strip);
   }
 
   function render() {
@@ -314,7 +346,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       const x = f.x - f.w / 2,
         y = f.y - f.h / 2 - shift(i);
       ctx.globalAlpha = f.alpha;
-      const tile = getTile((i === 29 ? 3 : i === 24 ? 6 : i) % 12, labels.get(i));
+      const tile = nodeTile(i);
       if (finale && tile && i !== 29) union.trail(finale, width, height, f, i, tile, shift(i));
       if (tile && y + f.h >= 0) {
         const cropHeight = Math.min(tile.height, (tile.width * f.h) / f.w);
@@ -473,6 +505,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   }
   return {
     size,
+    warmNextTile,
     seek,
     step,
     finish,

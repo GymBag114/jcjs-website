@@ -1,8 +1,8 @@
-import { canvasDensity, constrainedRendering } from '../core/render-budget.js';
+import { constrainedRendering, printDensity } from '../core/render-budget.js';
 import { printGrain, getPaperGrain } from './paper.js';
 
 // Two ink passes let the broad shapes settle before the fine engraving appears.
-export const drawTowerPrint = (() => {
+const towerPrint = (() => {
   const ink = '#292622',
     red = '#a32b20',
     paper = '#eee9df';
@@ -21,8 +21,7 @@ export const drawTowerPrint = (() => {
   let grain;
   const photoCache = new WeakMap();
 
-  function prepare(canvas, width, height) {
-    const density = canvasDensity(width, height);
+  function prepare(canvas, width, height, density) {
     canvas.width = Math.round(width * density);
     canvas.height = Math.round(height * density);
     const ctx = canvas.getContext('2d');
@@ -36,7 +35,7 @@ export const drawTowerPrint = (() => {
     const top = portrait ? 715 : 409;
     const stripHeight = portrait ? 68 : 106;
     const screenHeight = (stripHeight * height) / 900;
-    const density = canvasDensity(width, screenHeight);
+    const density = printDensity(width, screenHeight, false);
     band.width = Math.max(1, Math.round(width * density));
     band.height = Math.max(1, Math.round(screenHeight * density));
     band.style.cssText = `top:${top / 9}%;height:${stripHeight / 9}%`;
@@ -161,7 +160,7 @@ export const drawTowerPrint = (() => {
     const bottom = Math.ceil(Math.max(...points.map(([, y]) => y))) + 2;
     const plateWidth = right - left,
       plateHeight = bottom - top;
-    const density = canvasDensity((plateWidth * height) / 900, (plateHeight * height) / 900);
+    const density = printDensity((plateWidth * height) / 900, (plateHeight * height) / 900, false);
     spear.width = Math.ceil(((plateWidth * height) / 900) * density);
     spear.height = Math.ceil(((plateHeight * height) / 900) * density);
     spear.style.cssText = `left:${(left / w) * 100}%;top:${top / 9}%;width:${(plateWidth / w) * 100}%;height:${plateHeight / 9}%`;
@@ -183,7 +182,7 @@ export const drawTowerPrint = (() => {
 
   // Give the rings their complete image bounds. The portion originally outside
   // the viewport becomes visible as the camera passes it.
-  function drawRings(w, height, portrait) {
+  function ringLayout(w, portrait) {
     const radius = portrait ? w * 0.74 : 440;
     const centers = portrait
       ? [
@@ -194,19 +193,20 @@ export const drawTowerPrint = (() => {
           [0.035, 110],
           [0.965, 790],
         ];
-    rings.forEach((ring, i) => {
-      const [x, y] = centers[i];
-      const diameter = 2 * radius;
-      const pixels = Math.ceil(
-        ((diameter * height) / 900) *
-          canvasDensity((diameter * height) / 900, (diameter * height) / 900),
-      );
-      ring.width = ring.height = Math.min(1800, pixels);
-      ring.style.cssText = `left:${(x - radius / w) * 100}%;top:${(y - radius) / 9}%;width:${(diameter / w) * 100}%;height:${diameter / 9}%`;
-      const ctx = ring.getContext('2d');
-      ctx.scale(ring.width / diameter, ring.height / diameter);
-      architecturalRing(ctx, radius, radius, radius, radius * 0.31);
-    });
+    return centers.map(([x, y]) => ({ x, y, radius }));
+  }
+
+  function paintRing(ring, { x, y, radius }, w, height) {
+    const diameter = 2 * radius;
+    const pixels = Math.ceil(
+      ((diameter * height) / 900) *
+        printDensity((diameter * height) / 900, (diameter * height) / 900, false),
+    );
+    ring.width = ring.height = Math.min(1800, pixels);
+    ring.style.cssText = `left:${(x - radius / w) * 100}%;top:${(y - radius) / 9}%;width:${(diameter / w) * 100}%;height:${diameter / 9}%`;
+    const ctx = ring.getContext('2d');
+    ctx.scale(ring.width / diameter, ring.height / diameter);
+    architecturalRing(ctx, radius, radius, radius, radius * 0.31);
   }
 
   function bandPass(ctx, w, portrait) {
@@ -309,27 +309,68 @@ export const drawTowerPrint = (() => {
     );
   }
 
-  return function draw(width, height) {
-    if (!width || !height) return;
-    grain ||= getPaperGrain();
+  function bakeEndcap(w, portrait) {
+    // Bake the endcap at band height, with the same ink and grain as its source.
+    const stripHeight = portrait ? 68 : 106;
+    overprint.width = band.width;
+    overprint.height = band.height;
+    const cap = overprint.getContext('2d');
+    cap.scale(overprint.width / w, overprint.height / stripHeight);
+    cap.fillStyle = red;
+    cap.fillRect(0, 0, w, stripHeight);
+    printGrain(cap, 0, 0, w, stripHeight);
+  }
+
+  function geometryLayout(width, height) {
     const w = (900 * width) / height,
       cx = w / 2,
       cy = 456;
     const portrait = width / height <= 0.8;
-    const r = Math.min(277, w * 0.445);
+    return { w, cx, cy, portrait, r: Math.min(277, w * 0.445) };
+  }
+
+  let geometryWidth = 0,
+    geometryHeight = 0;
+  function place(width, height) {
+    if (!width || !height || (width === geometryWidth && height === geometryHeight)) return;
+    geometryWidth = width;
+    geometryHeight = height;
+    const { w, cx, cy, r, portrait } = geometryLayout(width, height);
     placeGeometry(w, cx, cy, r, portrait);
-    broadPass(prepare(masses, width, height), w, portrait);
-    drawRings(w, height, portrait);
+  }
+
+  function* stages(width, height) {
+    if (!width || !height) return;
+    grain ||= getPaperGrain();
+    const { w, cx, cy, r, portrait } = geometryLayout(width, height);
+    broadPass(prepare(masses, width, height, printDensity(width, height, false)), w, portrait);
+    yield;
+    // One ring per slice: either ring is a large canvas of its own.
+    const layout = ringLayout(w, portrait);
+    for (let i = 0; i < rings.length; i++) {
+      paintRing(rings[i], layout[i], w, height);
+      yield;
+    }
     spearPass(w, height, cx, cy, r);
+    yield;
     bandPass(prepareBand(width, height, portrait), w, portrait);
-    // Bake the endcap at band height, with the same ink and grain as its source.
-    const stripHeight = portrait ? 68 : 106;
-    overprint.width = Math.ceil(w);
-    overprint.height = stripHeight;
-    const cap = overprint.getContext('2d');
-    cap.fillStyle = red;
-    cap.fillRect(0, 0, w, stripHeight);
-    printGrain(cap, 0, 0, w, stripHeight);
-    finePass(prepare(orbits, width, height), w, cx, cy, r, portrait);
-  };
+    yield;
+    bakeEndcap(w, portrait);
+    yield;
+    finePass(prepare(orbits, width, height, printDensity(width, height)), w, cx, cy, r, portrait);
+  }
+
+  function draw(width, height) {
+    place(width, height);
+    const bake = stages(width, height);
+    while (!bake.next().done);
+  }
+
+  return { draw, stages, place };
 })();
+
+// drawTowerPrint stays the one-shot entry point; stageTowerPrint exposes the
+// same bake as resumable slices for the idle prewarm.
+export const drawTowerPrint = towerPrint.draw;
+export const stageTowerPrint = towerPrint.stages;
+export const placeTowerGeometry = towerPrint.place;
