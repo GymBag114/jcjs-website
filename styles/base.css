@@ -46,7 +46,6 @@ body {
 .plane {
   position: absolute;
   pointer-events: none;
-  will-change: transform;
 }
 .plane img {
   display: block;

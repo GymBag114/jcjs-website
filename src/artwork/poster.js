@@ -1,3 +1,4 @@
+import { canvasDensity, constrainedRendering } from '../core/render-budget.js';
 import { printGrain, getPaperGrain } from './paper.js';
 
 // Two ink passes let the broad shapes settle before the fine engraving appears.
@@ -21,11 +22,27 @@ export const drawTowerPrint = (() => {
   const photoCache = new WeakMap();
 
   function prepare(canvas, width, height) {
-    const density = Math.min(devicePixelRatio || 1, 1.5, 1800 / Math.max(width, height));
+    const density = canvasDensity(width, height);
     canvas.width = Math.round(width * density);
     canvas.height = Math.round(height * density);
     const ctx = canvas.getContext('2d');
     ctx.setTransform(((canvas.width / width) * height) / 900, 0, 0, canvas.height / 900, 0, 0);
+    return ctx;
+  }
+
+  function prepareBand(width, height, portrait) {
+    // The band only paints this narrow strip. A full-viewport transparent
+    // backing store wastes memory and does not contribute to the artwork.
+    const top = portrait ? 715 : 409;
+    const stripHeight = portrait ? 68 : 106;
+    const screenHeight = (stripHeight * height) / 900;
+    const density = canvasDensity(width, screenHeight);
+    band.width = Math.max(1, Math.round(width * density));
+    band.height = Math.max(1, Math.round(screenHeight * density));
+    band.style.cssText = `top:${top / 9}%;height:${stripHeight / 9}%`;
+    const ctx = band.getContext('2d');
+    ctx.setTransform(band.width / ((900 * width) / height), 0, 0, band.height / stripHeight, 0, 0);
+    ctx.translate(0, -top);
     return ctx;
   }
 
@@ -34,7 +51,10 @@ export const drawTowerPrint = (() => {
     let plate = photoCache.get(image);
     if (!plate) {
       plate = document.createElement('canvas');
-      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+      const scale = Math.min(
+        1,
+        (constrainedRendering ? 800 : 1600) / Math.max(image.naturalWidth, image.naturalHeight),
+      );
       plate.width = Math.round(image.naturalWidth * scale);
       plate.height = Math.round(image.naturalHeight * scale);
       const ink = plate.getContext('2d');
@@ -141,11 +161,7 @@ export const drawTowerPrint = (() => {
     const bottom = Math.ceil(Math.max(...points.map(([, y]) => y))) + 2;
     const plateWidth = right - left,
       plateHeight = bottom - top;
-    const density = Math.min(
-      devicePixelRatio || 1,
-      1.5,
-      1800 / ((Math.max(plateWidth, plateHeight) * height) / 900),
-    );
+    const density = canvasDensity((plateWidth * height) / 900, (plateHeight * height) / 900);
     spear.width = Math.ceil(((plateWidth * height) / 900) * density);
     spear.height = Math.ceil(((plateHeight * height) / 900) * density);
     spear.style.cssText = `left:${(left / w) * 100}%;top:${top / 9}%;width:${(plateWidth / w) * 100}%;height:${plateHeight / 9}%`;
@@ -181,7 +197,10 @@ export const drawTowerPrint = (() => {
     rings.forEach((ring, i) => {
       const [x, y] = centers[i];
       const diameter = 2 * radius;
-      const pixels = Math.ceil(((diameter * height) / 900) * Math.min(devicePixelRatio || 1, 1.5));
+      const pixels = Math.ceil(
+        ((diameter * height) / 900) *
+          canvasDensity((diameter * height) / 900, (diameter * height) / 900),
+      );
       ring.width = ring.height = Math.min(1800, pixels);
       ring.style.cssText = `left:${(x - radius / w) * 100}%;top:${(y - radius) / 9}%;width:${(diameter / w) * 100}%;height:${diameter / 9}%`;
       const ctx = ring.getContext('2d');
@@ -302,7 +321,7 @@ export const drawTowerPrint = (() => {
     broadPass(prepare(masses, width, height), w, portrait);
     drawRings(w, height, portrait);
     spearPass(w, height, cx, cy, r);
-    bandPass(prepare(band, width, height), w, portrait);
+    bandPass(prepareBand(width, height, portrait), w, portrait);
     // Bake the endcap at band height, with the same ink and grain as its source.
     const stripHeight = portrait ? 68 : 106;
     overprint.width = Math.ceil(w);

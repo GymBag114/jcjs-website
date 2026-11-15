@@ -1,3 +1,4 @@
+import { constrainedRendering } from './core/render-budget.js';
 import { createParallax } from './effects/parallax.js';
 import { createGallery } from './gallery/gallery.js';
 import { createTowerDust } from './effects/tower-dust.js';
@@ -6,6 +7,7 @@ import { createIntro } from './intro/intro.js';
 import { bezier, emblemMotion } from './core/motion.js';
 
 const scene = document.querySelector('.scene');
+scene.classList.toggle('render-constrained', constrainedRendering);
 const world = document.querySelector('.world');
 const viewport = document.querySelector('.scene-viewport');
 const planes = [...document.querySelectorAll('[data-depth]')].map((element) => ({
@@ -68,13 +70,24 @@ const intro = createIntro({
   onReset: () => reset(true),
   onFinish() {
     pageButton.textContent = '进入第二页 · 未竟之塔';
-    if (window.requestIdleCallback) requestIdleCallback(preparePrint);
-    else setTimeout(preparePrint, 0);
+    // Allocate the poster only when requested, never during the opening.
   },
 });
 
+let measuredWidth = 0,
+  measuredHeight = 0,
+  measuredDpr = 0;
 /* ------------------------------------------------------------- parallax */
 function resize() {
+  if (
+    scene.clientWidth === measuredWidth &&
+    scene.clientHeight === measuredHeight &&
+    devicePixelRatio === measuredDpr
+  )
+    return;
+  measuredWidth = scene.clientWidth;
+  measuredHeight = scene.clientHeight;
+  measuredDpr = devicePixelRatio;
   // Cover without stretching. Coordinates and movement stay in artwork pixels.
   const scale = Math.max(scene.clientWidth / 2560, scene.clientHeight / 1440);
   scene.style.setProperty('--scene-scale', String(scale));
@@ -111,7 +124,6 @@ function turnPage(toPrint) {
   if (intro.active || toPrint === onPrint || performance.now() < lockedUntil) return;
   if (toPrint) {
     preparePrint();
-    if (window.requestIdleCallback) requestIdleCallback(gallery.prepareTiles);
   }
   towerDust.settle();
   // Start centering from the last painted depth offsets on the wipe frame.
@@ -195,7 +207,7 @@ scene.addEventListener(
       if (!gallery.active && !reducedMotion.matches && event.isPrimary) towerDust.brush(event);
       return;
     }
-    if (parallax.paused) return;
+    if (parallax.paused || event.pointerType !== 'mouse') return;
     if (gesture && Math.abs(event.clientY - gesture.y) > Math.abs(event.clientX - gesture.x))
       return;
     const bounds = scene.getBoundingClientRect();
@@ -207,6 +219,8 @@ scene.addEventListener(
       -1,
       Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1),
     );
+    parallax.target.x = Math.sin((parallax.target.x * Math.PI) / 2);
+    parallax.target.y = Math.sin((parallax.target.y * Math.PI) / 2);
     parallax.wake();
   },
   { passive: true },

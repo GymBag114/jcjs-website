@@ -1,3 +1,4 @@
+import { canvasDensity } from '../core/render-budget.js';
 import { createUnionArtwork } from '../artwork/union.js';
 import { createJoinPrint } from '../join/join-print.js';
 
@@ -128,12 +129,20 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     height = scene.clientHeight;
     portrait = width / height <= 0.8;
     paperWidth = width / Math.max(width / 2560, height / 1440);
-    const d = Math.min(devicePixelRatio || 1, 1.5, 2100 / Math.max(width, height));
-    canvas.width = Math.round(width * d);
-    canvas.height = Math.round(height * d);
-    ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
+    const d = canvasDensity(width, height, 2100);
+    if (pos || target) allocateCanvas(d);
     unionStill = null;
     if (pos || target) render();
+  }
+
+  function allocateCanvas(d = canvasDensity(width, height, 2100)) {
+    const w = Math.max(1, Math.round(width * d));
+    const h = Math.max(1, Math.round(height * d));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      ctx.setTransform(w / width, 0, 0, h / height, 0, 0);
+    }
   }
 
   function movePoster(distance) {
@@ -175,7 +184,12 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     canvas.hidden = !pos;
     scene.classList.toggle('in-gallery', !!pos);
     movePoster(distance);
-    if (!pos) return;
+    if (!pos) {
+      // Release the hidden backing store on return to the poster.
+      canvas.width = canvas.height = 1;
+      return;
+    }
+    allocateCanvas();
     if (joinClock === 1) {
       join.draw(1, 1, width, height, pan);
       return;
@@ -277,7 +291,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       if (clock) union.type(finale, clock, width, height, !joinClock);
     }
     ctx.globalAlpha = 1;
-    if (joinClock) {
+    if (joinClock && !unionStill) {
       unionStill = document.createElement('canvas');
       unionStill.width = canvas.width;
       unionStill.height = canvas.height;

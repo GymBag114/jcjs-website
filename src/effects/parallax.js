@@ -7,7 +7,7 @@ export function createParallax(planes, reducedMotion) {
 
   function paint() {
     for (const { element, depth } of planes) {
-      element.style.transform = `translate3d(${(-current.x * 40 * depth).toFixed(3)}px, ${(-current.y * 22 * depth).toFixed(3)}px, 0)`;
+      element.style.transform = `translate(${(-current.x * 12 * depth).toFixed(3)}px, ${(-current.y * 6 * depth).toFixed(3)}px)`;
     }
   }
 
@@ -16,7 +16,7 @@ export function createParallax(planes, reducedMotion) {
     const dt = lastTime ? Math.min(time - lastTime, 64) : 16.67;
     lastTime = time;
     // Time-based damping behaves consistently on 60Hz and 120Hz displays.
-    const blend = 1 - Math.exp(-dt / 115);
+    const blend = 1 - Math.exp(-dt / 180);
     current.x += (target.x - current.x) * blend;
     current.y += (target.y - current.y) * blend;
     if (Math.abs(target.x - current.x) + Math.abs(target.y - current.y) < 0.0002) {

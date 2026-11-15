@@ -1,13 +1,14 @@
+import { canvasDensity, constrainedRendering } from '../core/render-budget.js';
+
 // Dust carries the pigment and alpha of its point of origin in the tower.
 export function createTowerDust(tower) {
   const monochrome = new Image();
-  monochrome.src = new URL('../../assets/images/tower-monochrome.webp', import.meta.url).href;
   const canvas = tower.querySelector('canvas');
   const width = 756,
     height = 1133,
     bleed = 224;
   const cell = 12,
-    sprite = 32;
+    sprite = constrainedRendering ? 8 : 16;
   const columns = Math.ceil(width / cell),
     rows = Math.ceil(height / cell);
   let atlas,
@@ -15,13 +16,36 @@ export function createTowerDust(tower) {
     coverage,
     ctx,
     print,
+    damage,
+    damageInk,
     last,
     frame = 0,
     clock = 0;
   let settleStart = null;
   let grains = [],
-    cuts = [],
     eddies = [];
+  let lastRelease = -Infinity;
+  const recoveryDelay = 500,
+    recoveryDuration = 2200;
+
+  function damageOpacity(now) {
+    const t = Math.max(0, Math.min(1, (now - lastRelease - recoveryDelay) / recoveryDuration));
+    return 1 - t * t * (3 - 2 * t);
+  }
+
+  function resumeDamage(now) {
+    // Bake the currently visible damage before adding another stroke. A new
+    // gesture can deepen it, but can never reset old damage to full strength.
+    const opacity = damageOpacity(now);
+    if (opacity < 1) {
+      damageInk.globalCompositeOperation = 'destination-in';
+      damageInk.globalAlpha = opacity;
+      damageInk.fillRect(0, 0, width, height);
+      damageInk.globalCompositeOperation = 'source-over';
+      damageInk.globalAlpha = 1;
+    }
+    lastRelease = now;
+  }
 
   function surface(w, h) {
     const c = document.createElement('canvas');
@@ -71,6 +95,9 @@ export function createTowerDust(tower) {
 
   function prepare() {
     if (atlas) return true;
+    if (!monochrome.src) {
+      monochrome.src = new URL('../../assets/images/tower-monochrome.webp', import.meta.url).href;
+    }
     if (!monochrome.complete || !monochrome.naturalWidth) return false;
     print = surface(width, height);
     print.getContext('2d').drawImage(monochrome, 0, 0, width, height);
@@ -90,11 +117,11 @@ export function createTowerDust(tower) {
     ink.globalCompositeOperation = 'destination-in';
     ink.fillStyle = ink.createPattern(brushTexture(sprite, false), 'repeat');
     ink.fillRect(0, 0, atlas.width, atlas.height);
+    thumb.width = thumb.height = 1;
     erosion = brushTexture(96, true);
-    const density = Math.min(
-      1,
-      (tower.getBoundingClientRect().width / width) * Math.min(devicePixelRatio || 1, 1.5),
-    );
+    damage = surface(width, height);
+    damageInk = damage.getContext('2d');
+    const density = Math.min(1, canvasDensity(width + bleed * 2, height + bleed * 2));
     canvas.width = Math.round((width + bleed * 2) * density);
     canvas.height = Math.round((height + bleed * 2) * density);
     canvas.style.width = width + bleed * 2 + 'px';
@@ -136,7 +163,10 @@ export function createTowerDust(tower) {
       });
     }
     if (!hits) return;
-    cuts.push({ x, y, radius, born: now });
+    resumeDamage(now);
+    damageInk.globalAlpha = 0.24;
+    damageInk.drawImage(erosion, x - radius, y - radius, radius * 2, radius * 2);
+    damageInk.globalAlpha = 1;
     const previous = eddies[eddies.length - 1];
     if (previous && now - previous.born < 46) return;
     for (const sign of [-1, 1]) {
@@ -156,7 +186,9 @@ export function createTowerDust(tower) {
   function stop() {
     cancelAnimationFrame(frame);
     frame = 0;
-    grains.length = cuts.length = eddies.length = 0;
+    grains.length = eddies.length = 0;
+    damageInk?.clearRect(0, 0, width, height);
+    lastRelease = -Infinity;
     last = null;
     clock = 0;
     settleStart = null;
@@ -169,7 +201,6 @@ export function createTowerDust(tower) {
     const dt = Math.min(0.04, Math.max(0, (now - clock) / 1000));
     clock = now;
     grains = grains.filter((p) => now - p.born < p.life);
-    cuts = cuts.filter((c) => now - c.born < 1100);
     eddies = eddies.filter((e) => now - e.born < 1200);
     if (settleStart !== null) {
       const t = Math.min(1, Math.max(0, (now - settleStart) / 480));
@@ -178,19 +209,15 @@ export function createTowerDust(tower) {
         return;
       }
       tower.style.setProperty('--dust-return', t * t * (3 - 2 * t));
-    } else if (!grains.length && !cuts.length) {
+    } else if (!grains.length && damageOpacity(now) === 0) {
       stop();
       return;
     }
     ctx.clearRect(-bleed, -bleed, width + bleed * 2, height + bleed * 2);
     ctx.drawImage(print, 0, 0);
     ctx.globalCompositeOperation = 'destination-out';
-    for (const c of cuts) {
-      const age = Math.max(0, now - c.born);
-      const dissolve = Math.min(1, age / 85);
-      ctx.globalAlpha = dissolve * Math.min(1, (1100 - age) / 760) * 0.88;
-      ctx.drawImage(erosion, c.x - c.radius, c.y - c.radius, c.radius * 2, c.radius * 2);
-    }
+    ctx.globalAlpha = damageOpacity(now);
+    ctx.drawImage(damage, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     for (const e of eddies) {
       e.x += e.vx * dt;
@@ -272,9 +299,8 @@ export function createTowerDust(tower) {
         now,
       );
     if (grains.length > 650) grains.splice(0, grains.length - 650);
-    if (cuts.length > 48) cuts.splice(0, cuts.length - 48);
     if (eddies.length > 16) eddies.splice(0, eddies.length - 16);
-    if (!frame && cuts.length) {
+    if (!frame && lastRelease === now) {
       canvas.hidden = false;
       tower.classList.add('dusting');
       clock = now;
