@@ -2,6 +2,43 @@ import { canvasDensity } from '../core/render-budget.js';
 import { createUnionArtwork } from '../artwork/union.js';
 import { createJoinPrint } from '../join/join-print.js';
 
+// Each opaque tile has the same staggered 1.6px dots. Recording their four
+// covered pixels on all 256 background levels preserves the browser's own
+// edge blending, including the rounding on translucent ink.
+function dotColors(color) {
+  const strip = document.createElement('canvas');
+  strip.width = 512;
+  strip.height = 2;
+  const ctx = strip.getContext('2d', { willReadFrequently: true });
+  const ramp = ctx.createImageData(512, 2);
+  for (let i = 0; i < ramp.data.length; i += 4) {
+    ramp.data.fill((i >> 3) & 255, i, i + 3);
+    ramp.data[i + 3] = 255;
+  }
+  ctx.putImageData(ramp, 0, 0);
+  ctx.fillStyle = color;
+  for (let x = 0; x < 512; x += 2) ctx.fillRect(x, 0, 1.6, 1.6);
+  return ctx.getImageData(0, 0, 512, 2).data;
+}
+
+function applyDots(ctx, colors) {
+  const { width, height } = ctx.canvas;
+  const pixels = ctx.getImageData(0, 0, width, height);
+  const rgba = pixels.data;
+  for (let y = 1; y < height; y += 7) {
+    for (let x = (y % 2) * 3; x < width; x += 7) {
+      for (let row = 0; row < 2 && y + row < height; row++) {
+        for (let col = 0; col < 2 && x + col < width; col++) {
+          const dst = ((y + row) * width + x + col) * 4;
+          const edge = (row * 512 + col) * 4;
+          for (let c = 0; c < 3; c++) rgba[dst + c] = colors[rgba[dst + c] * 8 + edge + c];
+        }
+      }
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+}
+
 // Positions are in viewport widths along a single horizontal exhibition.
 export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onChange) {
   const canvas = scene.querySelector('.gallery');
@@ -64,6 +101,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   const depths = nodes.map(([, , size]) => 0.78 + Math.min(size, 0.23) * 2.55);
   const paintOrder = nodes.map((_, index) => index).sort((a, b) => depths[a] - depths[b]);
   const tiles = [];
+  const dotInks = new Map();
   const union = createUnionArtwork(ctx, emblemMotion);
   const unionPage = 1.62;
   const joinPage = 2,
@@ -88,42 +126,44 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     raf = 0,
     last = 0;
 
-  function prepareTiles() {
-    if (tiles.length || ![sky, ground, tower].every((img) => img.complete && img.naturalWidth))
-      return;
-    for (let i = 0; i < 12; i++) {
-      const tile = document.createElement('canvas');
-      tile.width = tile.height = 512;
-      const g = tile.getContext('2d', { willReadFrequently: true });
-      const light = i % 3 === 0;
-      g.fillStyle = light ? '#e5dfd2' : i % 3 === 1 ? '#9b3029' : '#302d28';
-      g.fillRect(0, 0, 512, 512);
-      const img = [tower, sky, ground, tower][i % 4];
-      const crop = Math.min(img.naturalWidth, img.naturalHeight) * (0.48 + (i % 4) * 0.12);
-      g.globalAlpha = light ? 0.78 : 0.72;
-      g.globalCompositeOperation = light ? 'multiply' : 'luminosity';
-      const sx = (img.naturalWidth - crop) * ((i * 0.37) % 1),
-        sy = (img.naturalHeight - crop) * ((i * 0.23 + 0.4) % 1);
-      if (i === 3) union.sampleTower(img, sx, sy, crop);
-      g.drawImage(img, sx, sy, crop, crop, 0, 0, 512, 512);
-      g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = 1;
-      if (i % 3 === 1) {
-        g.fillStyle = '#211c1988';
-        g.beginPath();
-        g.moveTo(0, 0);
-        g.lineTo(210, 0);
-        g.lineTo(0, 400);
-        g.fill();
-      }
-      g.fillStyle = light ? '#372a2036' : '#eee6cc38';
-      for (let y = 1; y < 512; y += 7)
-        for (let x = (y % 2) * 3; x < 512; x += 7) g.fillRect(x, y, 1.6, 1.6);
-      tiles.push(tile);
+  function getTile(i) {
+    if (tiles[i]) return tiles[i];
+    const img = [tower, sky, ground, tower][i % 4];
+    if (!img.complete || !img.naturalWidth) return;
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 512;
+    const g = tile.getContext('2d', { willReadFrequently: true });
+    const light = i % 3 === 0;
+    g.fillStyle = light ? '#e5dfd2' : i % 3 === 1 ? '#9b3029' : '#302d28';
+    g.fillRect(0, 0, 512, 512);
+    const crop = Math.min(img.naturalWidth, img.naturalHeight) * (0.48 + (i % 4) * 0.12);
+    g.globalAlpha = light ? 0.78 : 0.72;
+    g.globalCompositeOperation = light ? 'multiply' : 'luminosity';
+    const sx = (img.naturalWidth - crop) * ((i * 0.37) % 1),
+      sy = (img.naturalHeight - crop) * ((i * 0.23 + 0.4) % 1);
+    if (i === 3) union.sampleTower(img, sx, sy, crop);
+    g.drawImage(img, sx, sy, crop, crop, 0, 0, 512, 512);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    if (i % 3 === 1) {
+      g.fillStyle = '#211c1988';
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(210, 0);
+      g.lineTo(0, 400);
+      g.fill();
     }
+    const color = light ? '#372a2036' : '#eee6cc38';
+    if (!dotInks.has(color)) dotInks.set(color, dotColors(color));
+    applyDots(g, dotInks.get(color));
+    tiles[i] = tile;
+    return tile;
   }
 
+  let lastPosterDistance;
+
   function size() {
+    lastPosterDistance = undefined;
     footerWidth = 0;
     width = scene.clientWidth;
     height = scene.clientHeight;
@@ -146,6 +186,8 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   }
 
   function movePoster(distance) {
+    if (lastPosterDistance === distance) return;
+    lastPosterDistance = distance;
     const t = Math.min(distance / approach, 2.15);
     const shift = (name, widths) => poster.style.setProperty(name, -widths * paperWidth + 'px');
     shift('--far-ring-x', t * 0.74);
@@ -201,7 +243,6 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     }
     if (!joinClock) unionStill = null;
     ctx.clearRect(0, 0, width, height);
-    prepareTiles();
     // At camera zero and at the endpoint the frames land on their composed
     // coordinates. Between them, closer frames cross the lens faster.
     const parallax = camera <= 0 ? camera : (end / Math.PI) * Math.sin((Math.PI * camera) / end);
@@ -254,7 +295,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       const x = f.x - f.w / 2,
         y = f.y - f.h / 2 - shift(i);
       ctx.globalAlpha = f.alpha;
-      const tile = tiles[(i === 29 ? 3 : i === 24 ? 6 : i) % 12];
+      const tile = getTile((i === 29 ? 3 : i === 24 ? 6 : i) % 12);
       if (finale && tile && i !== 29) union.trail(finale, width, height, f, i, tile, shift(i));
       if (tile && y + f.h >= 0) {
         const cropHeight = Math.min(tile.height, (tile.width * f.h) / f.w);
@@ -405,7 +446,6 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     seek,
     step,
     finish,
-    prepareTiles,
     scroll,
     limit,
     joinPage,

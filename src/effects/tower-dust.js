@@ -15,7 +15,6 @@ export function createTowerDust(tower) {
     erosion,
     coverage,
     ctx,
-    print,
     damage,
     damageInk,
     last,
@@ -103,12 +102,10 @@ export function createTowerDust(tower) {
       monochrome.src = new URL('../../assets/images/tower-monochrome.webp', import.meta.url).href;
     }
     if (!monochrome.complete || !monochrome.naturalWidth) return false;
-    print = surface(width, height);
-    print.getContext('2d').drawImage(monochrome, 0, 0, width, height);
     // The resting masonry and every dust tile share the baked monochrome plate.
     const thumb = surface(columns, rows),
       sample = thumb.getContext('2d');
-    sample.drawImage(print, 0, 0, columns, rows);
+    sample.drawImage(monochrome, 0, 0, columns, rows);
     try {
       coverage = sample.getImageData(0, 0, columns, rows).data;
     } catch {
@@ -224,7 +221,7 @@ export function createTowerDust(tower) {
       return;
     }
     ctx.clearRect(-bleed, -bleed, width + bleed * 2, height + bleed * 2);
-    ctx.drawImage(print, 0, 0);
+    ctx.drawImage(monochrome, 0, 0);
     ctx.globalCompositeOperation = 'destination-out';
     ctx.globalAlpha = damageOpacity(now);
     ctx.drawImage(damage, 0, 0);

@@ -159,12 +159,15 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     if (clock === 1) {
       const { left, top, bw, bh, boundRight } = bounds;
       // Keep the original target under a stationary pointer during travel.
-      Object.assign(impression.style, {
-        left: left + 'px',
-        top: box.top + 'px',
-        width: Math.max(box.left + box.width, boundRight) - left + 'px',
-        height: box.height + 'px',
-      });
+      if (box.lastHitPlayhead !== playhead) {
+        box.lastHitPlayhead = playhead;
+        Object.assign(impression.style, {
+          left: left + 'px',
+          top: box.top + 'px',
+          width: Math.max(box.left + box.width, boundRight) - left + 'px',
+          height: box.height + 'px',
+        });
+      }
       ctx.fillStyle = '#161616';
       ctx.fillRect(left, top, bw, bh);
       printLockup(box, bounds, 1);
