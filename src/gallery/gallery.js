@@ -49,6 +49,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   const sky = scene.querySelector('.sky img');
   const ground = scene.querySelector('.ground img');
   const tower = scene.querySelector('.tower img');
+  const logo = scene.querySelector('.print-title img');
   const clamp = (n) => Math.max(0, Math.min(1, n));
   const smooth = (n) => {
     const t = clamp(n);
@@ -100,7 +101,8 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   // Larger prints sit nearer the viewer. Render them over the smaller ones.
   const depths = nodes.map(([, , size]) => 0.78 + Math.min(size, 0.23) * 2.55);
   const paintOrder = nodes.map((_, index) => index).sort((a, b) => depths[a] - depths[b]);
-  const tiles = [];
+  const labels = new Map([[3, '团结'], [12, '平等'], [21, '秩序']]);
+  const tiles = new Map();
   const dotInks = new Map();
   const union = createUnionArtwork(ctx, emblemMotion);
   const unionPage = 1.62;
@@ -126,8 +128,9 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     raf = 0,
     last = 0;
 
-  function getTile(i) {
-    if (tiles[i]) return tiles[i];
+  function getTile(i, label) {
+    const key = label || i;
+    if (tiles.has(key)) return tiles.get(key);
     const img = [tower, sky, ground, tower][i % 4];
     if (!img.complete || !img.naturalWidth) return;
     const tile = document.createElement('canvas');
@@ -156,7 +159,16 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     const color = light ? '#372a2036' : '#eee6cc38';
     if (!dotInks.has(color)) dotInks.set(color, dotColors(color));
     applyDots(g, dotInks.get(color));
-    tiles[i] = tile;
+    if (label) {
+      // A vertical title follows the tower's axis, leaving the engraving open.
+      g.fillStyle = label === '秩序' ? '#f3ebda' : '#902e25';
+      g.font = '400 124px "Songti SC", "Noto Serif CJK SC", SimSun, serif';
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      g.fillText(label[0], 34, 30);
+      g.fillText(label[1], 34, 164);
+    }
+    tiles.set(key, tile);
     return tile;
   }
 
@@ -295,7 +307,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       const x = f.x - f.w / 2,
         y = f.y - f.h / 2 - shift(i);
       ctx.globalAlpha = f.alpha;
-      const tile = getTile((i === 29 ? 3 : i === 24 ? 6 : i) % 12);
+      const tile = getTile((i === 29 ? 3 : i === 24 ? 6 : i) % 12, labels.get(i));
       if (finale && tile && i !== 29) union.trail(finale, width, height, f, i, tile, shift(i));
       if (tile && y + f.h >= 0) {
         const cropHeight = Math.min(tile.height, (tile.width * f.h) / f.w);
@@ -322,13 +334,12 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
         y = height * ((portrait ? 0.25 : 0.35) - finale * 0.95);
       const em = Math.min(width * (portrait ? 0.134 : 0.082), height * 0.17);
       ctx.fillStyle = '#25201c';
-      ctx.font = 'italic ' + em * 0.5 + 'px Didot, Georgia, serif';
-      ctx.fillText('The Unfinished', x, y);
-      ctx.font = em + 'px Didot, Georgia, serif';
-      ctx.fillText('Tower', x, y + em * 0.85);
-      ctx.fillStyle = '#8e3025';
-      ctx.font = '500 ' + Math.max(13, em * 0.17) + 'px "Songti SC", serif';
-      ctx.fillText('未 竟 之 塔', x, y + em * 1.28);
+      ctx.font = 'italic ' + em * 0.62 + 'px Didot, Georgia, serif';
+      ctx.fillText('This is', x, y);
+      if (logo.complete && logo.naturalWidth) {
+        const logoWidth = Math.min(width * (portrait ? 0.46 : 0.29), em * 4.2);
+        ctx.drawImage(logo, x, y + em * 0.3, logoWidth, logoWidth / 7);
+      }
       if (clock) union.type(finale, clock, width, height, !joinClock);
     }
     ctx.globalAlpha = 1;
