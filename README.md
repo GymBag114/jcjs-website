@@ -17,7 +17,8 @@ python3 -m http.server 8000
 | 位置 | 职责 |
 | --- | --- |
 | `index.html` | 页面结构、无障碍标记与首屏保护 |
-| `src/main.js` | 初始化、页面切换、键盘、滚轮与触摸输入 |
+| `src/main.js` | 初始化、首页转场与场景快捷键 |
+| `src/gallery/navigation.js` | 滚轮、触控板、触摸与方向键的浏览交互 |
 | `src/core/motion.js` | 贝塞尔曲线与共享标志动效 |
 | `src/core/render-budget.js` | 根据设备能力限制画布采样尺寸及像素面积 |
 | `src/intro/intro.js` | 开场动画时间轴、重播、跳过与缩放 |
@@ -45,7 +46,8 @@ python3 scripts/build_assets.py
 
 ## 交互与检查
 
-- 滚轮、上下方向键、PageUp / PageDown 或纵向触摸拖动切换场景。
+- 首页纵向滑动翻页。进入画廊后，触控板和触屏可横滑或纵滑，滚轮也可横向浏览；在画廊端点继续滑动可翻页。
+- 方向键支持连按和长按。PageUp / PageDown 每次移动接近一屏，JOIN US 右侧的页脚可以直接拖出。
 - 在第二页按 End 到页脚，Home 回到海报；反向翻页可返回异境。
 - F 切换全屏，异境中 R 重播开场，空格暂停 / 恢复视差，Escape 跳过开场。
 - `?page=join` 可直接预览 JOIN US；系统减少动态效果设置会跳过开场并减少动画。

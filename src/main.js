@@ -1,6 +1,7 @@
 import { constrainedRendering } from './core/render-budget.js';
 import { createParallax } from './effects/parallax.js';
 import { createGallery } from './gallery/gallery.js';
+import { bindNavigation } from './gallery/navigation.js';
 import { createTowerDust } from './effects/tower-dust.js';
 import { drawTowerPrint } from './artwork/poster.js';
 import { createIntro } from './intro/intro.js';
@@ -42,10 +43,11 @@ const gallery = createGallery(
               : value
                 ? '未竟之塔 · 横向画廊'
                 : '未竟之塔 · Introducing JCJS';
-    const changed = scene.getAttribute('aria-label') !== label;
-    scene.setAttribute('aria-label', label);
-    if (changed) notice.textContent = label;
-    pageButton.textContent =
+    if (scene.getAttribute('aria-label') !== label) {
+      scene.setAttribute('aria-label', label);
+      notice.textContent = label;
+    }
+    const action =
       value === gallery.limit
         ? '返回 JOIN US'
         : value >= gallery.joinPage
@@ -57,6 +59,7 @@ const gallery = createGallery(
               : value
                 ? '向右浏览画廊'
                 : '进入横向画廊';
+    if (pageButton.textContent !== action) pageButton.textContent = action;
   },
 );
 const parallax = createParallax(planes, reducedMotion);
@@ -137,13 +140,6 @@ function turnPage(toPrint) {
   notice.textContent = toPrint ? '第二页，未竟之塔' : '第一页，异境';
 }
 
-function navigate(forward) {
-  if (intro.active || performance.now() < lockedUntil) return;
-  if (onPrint && (forward || gallery.active)) {
-    gallery.step(forward);
-  } else turnPage(forward);
-}
-
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -155,61 +151,35 @@ async function toggleFullscreen() {
   }
 }
 
-let gesture;
-scene.addEventListener('pointerdown', (event) => {
-  if (event.isPrimary && event.pointerType === 'touch') {
-    gesture = {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      lastY: event.clientY,
-      gallery: gallery.active,
-    };
-
-    gesture.link = event.target.closest('a[href]');
-    if (!gesture.link) scene.setPointerCapture(event.pointerId);
-  }
+const navigation = bindNavigation(scene, gallery, {
+  onPrint: () => onPrint,
+  introActive: () => intro.active,
+  busy: () => intro.active || performance.now() < lockedUntil,
+  turnPage,
+  brush: (event) => {
+    if (!reducedMotion.matches) towerDust.brush(event);
+  },
+  endTouch: () => {
+    towerDust.endStroke();
+    reset();
+  },
 });
 
 scene.addEventListener(
   'pointermove',
   (event) => {
-    if (intro.active || performance.now() < lockedUntil || event.target.closest('button')) return;
-    if (gesture?.link && gesture.id === event.pointerId) {
-      // Keep native tap activation until the finger starts a drag.
-      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) < 9) return;
-      scene.setPointerCapture(event.pointerId);
-      gesture.link = null;
-    }
     if (
-      onPrint &&
-      gesture &&
-      gesture.id === event.pointerId &&
-      !gesture.gallery &&
-      gesture.y - event.clientY > Math.max(8, Math.abs(event.clientX - gesture.x))
-    ) {
-      gesture.gallery = true;
-    }
-    if (gesture?.gallery && gesture.id === event.pointerId) {
-      if (
-        !gesture.used &&
-        Math.abs(event.clientY - gesture.y) > Math.abs(event.clientX - gesture.x)
-      ) {
-        gesture.used = gallery.scroll(
-          (gesture.lastY - event.clientY) * 1.8,
-          gesture.y - event.clientY,
-        );
-      }
-      gesture.lastY = event.clientY;
+      event.pointerType === 'touch' ||
+      intro.active ||
+      performance.now() < lockedUntil ||
+      event.target.closest('button')
+    )
       return;
-    }
     if (onPrint) {
       if (!gallery.active && !reducedMotion.matches && event.isPrimary) towerDust.brush(event);
       return;
     }
     if (parallax.paused || event.pointerType !== 'mouse') return;
-    if (gesture && Math.abs(event.clientY - gesture.y) > Math.abs(event.clientX - gesture.x))
-      return;
     const bounds = scene.getBoundingClientRect();
     parallax.target.x = Math.max(
       -1,
@@ -226,49 +196,6 @@ scene.addEventListener(
   { passive: true },
 );
 
-scene.addEventListener('pointerup', (event) => {
-  if (event.pointerId !== gesture?.id) return;
-  const dy = event.clientY - gesture.y,
-    dx = event.clientX - gesture.x;
-  const scrubbed = gesture.gallery;
-  gesture = null;
-  towerDust.endStroke();
-  if (!scrubbed && Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx)) navigate(dy < 0);
-  reset();
-});
-scene.addEventListener('pointercancel', () => {
-  gesture = null;
-  towerDust.endStroke();
-  reset();
-});
-
-let wheelDelta = 0,
-  lastWheel = -Infinity,
-  wheelUsed = false;
-scene.addEventListener(
-  'wheel',
-  (event) => {
-    if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-    event.preventDefault();
-    const now = performance.now();
-    if (now - lastWheel > 180 || Math.sign(event.deltaY) !== Math.sign(wheelDelta)) {
-      wheelDelta = 0;
-      wheelUsed = false;
-    }
-    lastWheel = now;
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scene.clientHeight : 1;
-    wheelDelta += event.deltaY * unit;
-    if (onPrint && (gallery.active || event.deltaY > 0) && !wheelUsed && now >= lockedUntil) {
-      wheelUsed = gallery.scroll(event.deltaY * unit, wheelDelta);
-      return;
-    }
-    if (!wheelUsed && Math.abs(wheelDelta) >= 26 && !intro.active && now >= lockedUntil) {
-      navigate(wheelDelta > 0);
-      wheelUsed = true;
-    }
-  },
-  { passive: false },
-);
 scene.addEventListener('pointerleave', () => {
   towerDust.endStroke();
   reset();
@@ -295,11 +222,11 @@ reducedMotion.addEventListener('change', () => {
 pageButton.addEventListener('click', () => {
   if (intro.active) intro.finish();
   else if (gallery.target === gallery.limit) gallery.step(false);
-  else navigate(true);
+  else if (performance.now() >= lockedUntil) navigation.step(true);
 });
 document.addEventListener('fullscreenchange', resize);
 document.addEventListener('keydown', (event) => {
-  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
   if (intro.active) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -307,13 +234,22 @@ document.addEventListener('keydown', (event) => {
     }
     return;
   }
-  if (['ArrowDown', 'PageDown', 'End', 'ArrowUp', 'PageUp', 'Home'].includes(event.key)) {
+  if (
+    [
+      'ArrowDown',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowLeft',
+      'PageDown',
+      'PageUp',
+      'Home',
+      'End',
+    ].includes(event.key)
+  ) {
     event.preventDefault();
-    if (onPrint && event.key === 'End' && performance.now() >= lockedUntil) {
-      gallery.seek(gallery.limit);
-    } else if (gallery.active && event.key === 'Home') gallery.seek(0);
-    else navigate(['ArrowDown', 'PageDown', 'End'].includes(event.key));
-  } else if (event.key.toLowerCase() === 'f') {
+    navigation.key(event);
+  } else if (event.repeat) return;
+  else if (event.key.toLowerCase() === 'f') {
     event.preventDefault();
     toggleFullscreen();
   } else if (!onPrint && performance.now() >= lockedUntil) {

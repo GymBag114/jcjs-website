@@ -60,7 +60,6 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   const approach = 1.34,
     end = 2.55;
   const overview = approach / (approach + end);
-  let velocity = 0;
   const nodes = [
     [0.12, 0.66, 0.14],
     [0.21, 0.26, 0.11],
@@ -101,7 +100,11 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   // Larger prints sit nearer the viewer. Render them over the smaller ones.
   const depths = nodes.map(([, , size]) => 0.78 + Math.min(size, 0.23) * 2.55);
   const paintOrder = nodes.map((_, index) => index).sort((a, b) => depths[a] - depths[b]);
-  const labels = new Map([[3, '团结'], [12, '平等'], [21, '秩序']]);
+  const labels = new Map([
+    [3, '团结'],
+    [12, '平等'],
+    [21, '秩序'],
+  ]);
   const tiles = new Map();
   const dotInks = new Map();
   const union = createUnionArtwork(ctx, emblemMotion);
@@ -110,7 +113,6 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     limit = 3;
   const footer = scene.querySelector('.join-footer');
   let footerPosition = 0,
-    footerVelocity = 0,
     footerWidth = 0;
   const pageDuration = 820;
   const wipeDuration = 720;
@@ -176,18 +178,20 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
 
   function size() {
     lastPosterDistance = undefined;
-    footerWidth = 0;
+    const wasHidden = footer.hidden;
+    footer.hidden = false;
+    footerWidth = footer.getBoundingClientRect().width;
+    footer.hidden = wasHidden;
     width = scene.clientWidth;
     height = scene.clientHeight;
     portrait = width / height <= 0.8;
     paperWidth = width / Math.max(width / 2560, height / 1440);
-    const d = canvasDensity(width, height, 2100);
-    if (pos || target) allocateCanvas(d);
     unionStill = null;
     if (pos || target) render();
   }
 
-  function allocateCanvas(d = canvasDensity(width, height, 2100)) {
+  function allocateCanvas() {
+    const d = canvasDensity(width, height, 2100);
     const w = Math.max(1, Math.round(width * d));
     const h = Math.max(1, Math.round(height * d));
     if (canvas.width !== w || canvas.height !== h) {
@@ -222,11 +226,15 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   function render() {
     const distance = pos * (approach + end);
     const joinClock = clamp((pageTime - pageDuration) / wipeDuration);
+    if (pos) allocateCanvas();
     footer.hidden = footerPosition === 0;
-    if (!footer.hidden && !footerWidth) footerWidth = footer.offsetWidth;
-    const pan = footerPosition * footerWidth;
-    if (pan > 0) {
-      footer.style.transform = 'translateX(' + (footerWidth - pan) + 'px)';
+    // The opaque black pass and the light paper beneath it end on the same
+    // backing pixel. Subpixel translation would blend both edges into a line.
+    const densityX = canvas.width / width;
+    const pan = Math.round(footerPosition * footerWidth * densityX) / densityX;
+    if (!footer.hidden) {
+      const remaining = footerPosition === 1 ? 0 : footerWidth - pan;
+      footer.style.transform = 'translateX(' + remaining + 'px)';
     }
     join.setInteractive(joinClock === 1 && target >= joinPage, joinClock);
     join.setPanning(footerPosition > 0 || target > joinPage);
@@ -243,7 +251,6 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       canvas.width = canvas.height = 1;
       return;
     }
-    allocateCanvas();
     if (joinClock === 1) {
       join.draw(1, 1, width, height, pan);
       return;
@@ -353,34 +360,23 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   }
 
   let lastPageFrame = 0;
+  const wheelDampingMs = 95;
+  const glideDampingMs = 150;
+  let dampingMs = wheelDampingMs;
+  function approachTarget(current, goal, distance, decay) {
+    const gap = (current - goal) * decay;
+    return Math.abs(gap * distance) < 0.25 ? goal : goal + gap;
+  }
+
   function tick(now) {
-    const dt = last ? Math.min(64, now - last) : 16;
+    const dt = last ? now - last : 16;
     last = now;
-    const seconds = dt / 1000;
-    const rate = 9,
-      decay = Math.exp(-rate * seconds);
+    const decay = Math.exp(-dt / dampingMs);
     const destination = goalTime();
-    const open = destination > 0;
-    const cameraTarget = open || pageTime > 0 ? 1 : target;
-    const gap = pos - cameraTarget,
-      slope = velocity + rate * gap;
-    pos = cameraTarget + (gap + slope * seconds) * decay;
-    velocity = (velocity - rate * slope * seconds) * decay;
-    if (Math.abs(cameraTarget - pos) < 0.00003 && Math.abs(velocity) < 0.00035) {
-      pos = cameraTarget;
-      velocity = 0;
-    }
-    // The footer is a continuation of the fourth sheet. Its camera follows
-    // the scroll target with the same damped response as the gallery.
+    const cameraTarget = destination > 0 || pageTime > 0 ? 1 : target;
+    pos = approachTarget(pos, cameraTarget, width * (approach + end), decay);
     const footerGoal = pageTime === finalTime ? clamp(target - joinPage) : 0;
-    const footerGap = footerPosition - footerGoal;
-    const footerSlope = footerVelocity + rate * footerGap;
-    footerPosition = clamp(footerGoal + (footerGap + footerSlope * seconds) * decay);
-    footerVelocity = (footerVelocity - rate * footerSlope * seconds) * decay;
-    if (Math.abs(footerPosition - footerGoal) < 0.00003 && Math.abs(footerVelocity) < 0.00035) {
-      footerPosition = footerGoal;
-      footerVelocity = 0;
-    }
+    footerPosition = approachTarget(footerPosition, footerGoal, footerWidth, decay);
     if (pos === 1 && (destination === finalTime || footerPosition === 0)) {
       const elapsed = lastPageFrame ? now - lastPageFrame : 0;
       // Rewind the same clock so every layer retraces its entry timing.
@@ -391,10 +387,8 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     render();
     if (
       pos !== Math.min(target, 1) ||
-      velocity ||
       pageTime !== destination ||
-      footerPosition !== clamp(target - joinPage) ||
-      footerVelocity
+      footerPosition !== clamp(target - joinPage)
     )
       raf = requestAnimationFrame(tick);
     else {
@@ -409,13 +403,12 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     last = 0;
     lastPageFrame = 0;
     pos = Math.min(target, 1);
-    velocity = 0;
     footerPosition = clamp(target - joinPage);
-    footerVelocity = 0;
     pageTime = goalTime();
     render();
   }
-  function seek(value) {
+  function seek(value, damping = wheelDampingMs) {
+    dampingMs = damping;
     const previous = target;
     target = value >= joinPage ? Math.min(value, limit) : value > 1 ? unionPage : clamp(value);
     if (target === previous) return;
@@ -428,21 +421,47 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   function turning() {
     return pageTime !== goalTime();
   }
-  function scroll(delta, gestureDistance) {
-    if (turning()) return true;
-    if (target >= joinPage && (target > joinPage || delta > 0)) {
-      const distance = 150 * Math.asinh(delta / 150);
-      seek(joinPage + clamp(target - joinPage + distance / Math.max(320, height * 0.95)));
-      return target === joinPage && delta < 0;
+  function canPan(delta) {
+    if (turning() || !delta) return false;
+    if (target >= joinPage) return delta > 0 ? target < limit : target > joinPage;
+    return target <= 1 && (delta > 0 ? target < 1 : target > 0);
+  }
+
+  function pan(pixels, direct = false, damping = wheelDampingMs) {
+    const footerTrack = target >= joinPage;
+    const start = footerTrack ? joinPage : 0;
+    const travel = footerTrack ? footerWidth : width * (approach + end);
+    const progress = clamp(target - start + pixels / travel);
+    if (direct) {
+      if (footerTrack) footerPosition = progress;
+      else pos = progress;
     }
-    if ((target === 1 && delta > 0) || target > 1) {
-      if (Math.abs(gestureDistance) < 26) return false;
-      step(delta > 0);
-      return true;
+    seek(start + progress, damping);
+  }
+
+  function panWheel(delta) {
+    const footerTrack = target >= joinPage;
+    const travel = footerTrack ? footerWidth : width * (approach + end);
+    const painted = footerTrack ? joinPage + footerPosition : pos;
+    // Bound how far a burst can run ahead of the picture. This budget is
+    // shared by all packets until the next paint, regardless of device.
+    const lead = (target - painted) * travel * Math.sign(delta);
+    const budget = Math.min(width * 0.5, travel * 0.6);
+    const pixels = Math.min(Math.abs(delta) * 0.72, Math.max(0, budget - lead));
+    pan(Math.sign(delta) * pixels);
+  }
+
+  function grab() {
+    if (turning()) return;
+    if (target >= joinPage) seek(joinPage + footerPosition);
+    else if (target <= 1) seek(pos);
+  }
+
+  function release(speed) {
+    if (!reducedMotion.matches && canPan(speed)) {
+      const reach = Math.min(Math.abs(speed) * glideDampingMs, width * 0.85);
+      pan(Math.sign(speed) * reach, false, glideDampingMs);
     }
-    const distance = 150 * Math.asinh(delta / 150);
-    seek(clamp(target + distance / (Math.max(480, height) * 3.45)));
-    return target === 1 || target === 0;
   }
   function step(forward) {
     if (turning()) return;
@@ -457,7 +476,12 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     seek,
     step,
     finish,
-    scroll,
+    turning,
+    canPan,
+    pan,
+    panWheel,
+    grab,
+    release,
     limit,
     joinPage,
     unionPage,
