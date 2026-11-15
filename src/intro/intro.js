@@ -1,4 +1,28 @@
-import { bezier, clamp01, lerp, emblemMotion } from '../core/motion.js';
+import { bezier, clamp01, lerp } from '../core/motion.js';
+
+// BLUE at 30 fps, in reference pixels. Track the E's right edge and the
+// stretched L's left edge. Index 0 is a pre-roll frame with the mark hidden.
+const frameMs = 1000 / 30;
+const frontEdge = [0, 10, 32, 74, 232, 392, 434, 456, 470];
+const stemEdge = [-260, -260, -260, -260, -260, -260, -240, -136, 0, 122, 172, 194, 204, 208, 210];
+
+// The negative stem positions continue the motion behind the screen edge.
+// Monotone cubic interpolation passes through each sample at any refresh rate
+// and flattens at rest without overshooting short, nearly stationary segments.
+function edgePosition(samples, frame) {
+  const i = Math.floor(frame);
+  if (i >= samples.length - 1) return samples[samples.length - 1];
+  const u = frame - i;
+  const delta = samples[i + 1] - samples[i];
+  if (delta === 0) return samples[i];
+  const tangent = (adjacent) => adjacent > 0 ? 2 * adjacent * delta / (adjacent + delta) : 0;
+  const before = i > 0 ? samples[i] - samples[i - 1] : 0;
+  const after = i + 2 < samples.length ? samples[i + 2] - samples[i + 1] : 0;
+  return samples[i] + u * (
+    delta * u * (3 - 2 * u) +
+    (1 - u) * ((1 - u) * tangent(before) - u * tangent(after))
+  );
+}
 
 export function createIntro({
   scene,
@@ -28,7 +52,6 @@ export function createIntro({
     expand: 335,
     full: 990,
     emblemStart: 990,
-    end: 1520,
   };
   const geom = { w: 0, h: 0, s: 160, scale: 1, markWidth: 2400 };
   const state = { active: false, playing: false, time: 0, start: 0, raf: 0, run: 0, timeout: 0 };
@@ -56,15 +79,17 @@ export function createIntro({
 
     // Convert the screen margin to the original 35-unit logo coordinate space.
     const margin = (geom.w / geom.markWidth - 1) * 17.5 + 0.1;
-    const motion = emblemMotion(elapsed);
-    const lead = 1 - motion.front;
-    const tail = 1 - motion.tail;
+    const frame = elapsed / frameMs;
+    const lead = 1 - edgePosition(frontEdge, frame) / frontEdge[frontEdge.length - 1];
+    const tail = 1 - edgePosition(stemEdge, frame) / stemEdge[stemEdge.length - 1];
     const leftDistance = -23 - margin;
     const rightDistance = 17 + margin; // The lower arm of the X starts at x=18.
     const left = leftDistance * lead;
-    const leftTail = leftDistance * tail;
+    // The outer edges of the stems are at x=11 and x=24, equally far from
+    // their screen edges. At the reference edge crossing, the fronts are home.
+    const leftTail = -(11 + margin) * tail;
     const right = rightDistance * lead;
-    const rightTail = rightDistance * tail;
+    const rightTail = -leftTail;
 
     // In the left stem x=12 follows the front and x=11 follows the tail.
     // In the right stem x=23 leads and x=24 follows.
@@ -143,7 +168,7 @@ export function createIntro({
     const t = now - state.start;
     state.time = t;
     scrub(t);
-    if (t >= TL.end) {
+    if (t >= TL.emblemStart + (stemEdge.length - 1) * frameMs) {
       finish();
       return;
     }

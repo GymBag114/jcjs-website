@@ -15,8 +15,6 @@ export function createTowerDust(tower) {
     erosion,
     coverage,
     ctx,
-    damage,
-    damageInk,
     last,
     frame = 0,
     clock = 0;
@@ -27,27 +25,22 @@ export function createTowerDust(tower) {
   // A live grain owns its slot until the end of its fade.
   const maxGrains = 650, burst = 84, birthsPerSecond = 430;
   let birthCredit = burst, lastBudgetTime = 0, birthSequence = 0;
-  let lastRelease = -Infinity;
   const recoveryDelay = 500,
     recoveryDuration = 2200;
 
-  function damageOpacity(now) {
-    const t = Math.max(0, Math.min(1, (now - lastRelease - recoveryDelay) / recoveryDuration));
-    return 1 - t * t * (3 - 2 * t);
-  }
+  // Keep nearby birth times together. All cached patches combined fit within
+  // the pixel budget of the original tower-sized erosion mask.
+  const batchMs = 180;
+  let damageUntil = 0;
+  const batches = Array.from(
+    { length: Math.ceil((recoveryDelay + recoveryDuration) / batchMs) + 1 },
+    () => ({ id: -1, marks: [], ink: null }),
+  );
+  const patchEdge = Math.floor(Math.sqrt(width * height / batches.length));
 
-  function resumeDamage(now) {
-    // Bake the currently visible damage before adding another stroke. A new
-    // gesture can deepen it, but can never reset old damage to full strength.
-    const opacity = damageOpacity(now);
-    if (opacity < 1) {
-      damageInk.globalCompositeOperation = 'destination-in';
-      damageInk.globalAlpha = opacity;
-      damageInk.fillRect(0, 0, width, height);
-      damageInk.globalCompositeOperation = 'source-over';
-      damageInk.globalAlpha = 1;
-    }
-    lastRelease = now;
+  function damageOpacity(age) {
+    const t = Math.max(0, Math.min(1, (age - recoveryDelay) / recoveryDuration));
+    return 1 - t * t * (3 - 2 * t);
   }
 
   function surface(w, h) {
@@ -55,6 +48,62 @@ export function createTowerDust(tower) {
     c.width = w;
     c.height = h;
     return c;
+  }
+
+  function recordDamage(x, y, radius, now) {
+    const id = Math.floor(now / batchMs);
+    const batch = batches[id % batches.length];
+    if (batch.id !== id) {
+      batch.id = id;
+      batch.first = now;
+      batch.marks.length = 0;
+    }
+    batch.last = now;
+    damageUntil = now + recoveryDelay + recoveryDuration;
+    batch.marks.push({ x: x - radius, y: y - radius, size: radius * 2 });
+  }
+
+  // Rasterize the closed batch once, using its actual footprint so short
+  // strokes get more texture detail than a downsampled full-tower mask.
+  function cacheDamage(batch) {
+    let left = width, top = height, right = 0, bottom = 0;
+    for (const mark of batch.marks) {
+      left = Math.min(left, Math.floor(mark.x));
+      top = Math.min(top, Math.floor(mark.y));
+      right = Math.max(right, Math.ceil(mark.x + mark.size));
+      bottom = Math.max(bottom, Math.ceil(mark.y + mark.size));
+    }
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+    const w = Math.min(width, right) - left;
+    const h = Math.min(height, bottom) - top;
+    const ink = batch.ink ??= surface(patchEdge, patchEdge).getContext('2d');
+    ink.clearRect(0, 0, patchEdge, patchEdge);
+    const pw = Math.min(patchEdge, w), ph = Math.min(patchEdge, h);
+    ink.save();
+    ink.scale(pw / w, ph / h);
+    ink.translate(-left, -top);
+    ink.globalAlpha = 0.24;
+    for (const mark of batch.marks) ink.drawImage(erosion, mark.x, mark.y, mark.size, mark.size);
+    ink.restore();
+    batch.patch = { left, top, w, h, pw, ph };
+    batch.marks.length = 0;
+  }
+
+  function drawDamage(now) {
+    const current = Math.floor(now / batchMs);
+    for (const batch of batches) {
+      if (batch.id < 0 || now - batch.last >= recoveryDelay + recoveryDuration) continue;
+      if (batch.id >= current) {
+        ctx.globalAlpha = 0.24;
+        for (const mark of batch.marks) ctx.drawImage(erosion, mark.x, mark.y, mark.size, mark.size);
+      } else {
+        if (batch.marks.length) cacheDamage(batch);
+        const { left, top, w, h, pw, ph } = batch.patch;
+        ctx.globalAlpha = damageOpacity(now - (batch.first + batch.last) / 2);
+        ctx.drawImage(batch.ink.canvas, 0, 0, pw, ph, left, top, w, h);
+      }
+    }
   }
 
   // Smooth noise bends the stock into little filaments before it is lifted.
@@ -120,8 +169,6 @@ export function createTowerDust(tower) {
     ink.fillRect(0, 0, atlas.width, atlas.height);
     thumb.width = thumb.height = 1;
     erosion = brushTexture(96, true);
-    damage = surface(width, height);
-    damageInk = damage.getContext('2d');
     const density = Math.min(1, canvasDensity(width + bleed * 2, height + bleed * 2));
     canvas.width = Math.round((width + bleed * 2) * density);
     canvas.height = Math.round((height + bleed * 2) * density);
@@ -168,10 +215,7 @@ export function createTowerDust(tower) {
       });
     }
     if (!hits) return;
-    resumeDamage(now);
-    damageInk.globalAlpha = 0.24;
-    damageInk.drawImage(erosion, x - radius, y - radius, radius * 2, radius * 2);
-    damageInk.globalAlpha = 1;
+    recordDamage(x, y, radius, now);
     const previous = eddies[eddies.length - 1];
     if (previous && now - previous.born < 46) return;
     for (const sign of [-1, 1]) {
@@ -193,9 +237,12 @@ export function createTowerDust(tower) {
     frame = 0;
     grains.length = eddies.length = 0;
     birthCredit = burst;
+    damageUntil = 0;
     lastBudgetTime = birthSequence = 0;
-    damageInk?.clearRect(0, 0, width, height);
-    lastRelease = -Infinity;
+    for (const batch of batches) {
+      batch.id = -1;
+      batch.marks.length = 0;
+    }
     last = null;
     clock = 0;
     settleStart = null;
@@ -216,15 +263,14 @@ export function createTowerDust(tower) {
         return;
       }
       tower.style.setProperty('--dust-return', t * t * (3 - 2 * t));
-    } else if (!grains.length && damageOpacity(now) === 0) {
+    } else if (!grains.length && now >= damageUntil) {
       stop();
       return;
     }
     ctx.clearRect(-bleed, -bleed, width + bleed * 2, height + bleed * 2);
     ctx.drawImage(monochrome, 0, 0);
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.globalAlpha = damageOpacity(now);
-    ctx.drawImage(damage, 0, 0);
+    drawDamage(now);
     ctx.globalCompositeOperation = 'source-over';
     for (const e of eddies) {
       e.x += e.vx * dt;
@@ -313,7 +359,7 @@ export function createTowerDust(tower) {
       );
     }
     if (eddies.length > 16) eddies.splice(0, eddies.length - 16);
-    if (!frame && lastRelease === now) {
+    if (!frame && now < damageUntil) {
       canvas.hidden = false;
       tower.classList.add('dusting');
       clock = now;

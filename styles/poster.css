@@ -130,11 +130,7 @@
   font-size: min(calc(var(--paper-w) * 0.106), calc(var(--paper-h) * 0.17));
   letter-spacing: -0.075em;
   mix-blend-mode: screen;
-}
-.print-title span,
-.print-title img {
-  clip-path: inset(-30% 0 125%);
-  transform: translateY(0.28em);
+  clip-path: inset(-30% 50%);
 }
 .print-title span {
   font-size: min(calc(var(--paper-w) * 0.071), calc(var(--paper-h) * 0.121));
@@ -143,9 +139,7 @@
   width: 26%;
   height: auto;
   filter: invert(0.96);
-  transform: translateX(-14%);
 }
-.scene[data-page='print'] .print-title :is(span, img) {
-  clip-path: inset(-30% -8%);
-  transform: none;
+.scene[data-page='print'] .print-title {
+  clip-path: inset(-30% 0);
 }
