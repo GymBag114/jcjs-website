@@ -24,6 +24,10 @@ export function createTowerDust(tower) {
   let settleStart = null;
   let grains = [],
     eddies = [];
+  // Keep a short burst for the first sweep, then spread births over time.
+  // A live grain owns its slot until the end of its fade.
+  const maxGrains = 650, burst = 84, birthsPerSecond = 430;
+  let birthCredit = burst, lastBudgetTime = 0, birthSequence = 0;
   let lastRelease = -Infinity;
   const recoveryDelay = 500,
     recoveryDuration = 2200;
@@ -134,7 +138,7 @@ export function createTowerDust(tower) {
 
   // A stroke sheds counter-rotating eddies on its two sides. Neighbouring
   // grains share the flow; fine ash follows it longer than heavy fragments.
-  function release(x, y, dx, dy, speed, radius, now) {
+  function release(x, y, dx, dy, speed, radius, now, quota) {
     let hits = 0;
     for (let i = 0; i < 28; i++) {
       const angle = Math.random() * 2 * Math.PI,
@@ -146,7 +150,11 @@ export function createTowerDust(tower) {
         row = Math.floor((py / height) * rows);
       if (coverage && coverage[(row * columns + col) * 4 + 3] < 12) continue;
       hits++;
-      const mist = i % 3 === 0;
+      // A covered brush still erodes the tower when all particle slots are busy.
+      if (quota === 0) break;
+      quota--;
+      birthCredit--;
+      const mist = birthSequence++ % 3 === 0;
       const thrust = (70 + 200 * speed) * (0.66 + Math.random() * 0.35);
       grains.push({
         x: px,
@@ -187,6 +195,8 @@ export function createTowerDust(tower) {
     cancelAnimationFrame(frame);
     frame = 0;
     grains.length = eddies.length = 0;
+    birthCredit = burst;
+    lastBudgetTime = birthSequence = 0;
     damageInk?.clearRect(0, 0, width, height);
     lastRelease = -Infinity;
     last = null;
@@ -288,7 +298,12 @@ export function createTowerDust(tower) {
       !prepare()
     )
       return;
-    for (let i = 1; i <= steps; i++)
+    birthCredit = Math.min(burst, birthCredit + ((now - lastBudgetTime) * birthsPerSecond) / 1000);
+    lastBudgetTime = now;
+    const available = Math.min(Math.floor(birthCredit), maxGrains - grains.length, steps * 28);
+    for (let i = 1; i <= steps; i++) {
+      // Share even a small allowance along the whole pointer segment.
+      const quota = Math.floor((i * available) / steps) - Math.floor(((i - 1) * available) / steps);
       release(
         previous.x + (dx * i) / steps,
         previous.y + (dy * i) / steps,
@@ -297,8 +312,9 @@ export function createTowerDust(tower) {
         speed,
         radius,
         now,
+        quota,
       );
-    if (grains.length > 650) grains.splice(0, grains.length - 650);
+    }
     if (eddies.length > 16) eddies.splice(0, eddies.length - 16);
     if (!frame && lastRelease === now) {
       canvas.hidden = false;
