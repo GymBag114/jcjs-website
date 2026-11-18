@@ -1,6 +1,23 @@
+.join-surface {
+  --sheet-height: 100svh;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.join-portrait .join-surface {
+  --sheet-height: 100vw;
+  inset: 0 auto auto 100%;
+  width: 100svh;
+  height: 100vw;
+  transform-origin: top left;
+  transform: rotate(90deg);
+}
+
 /* The canvas prints both colours of the lettering; the overlay follows its
    visible bounds and supplies a focusable hover/touch target. */
 .join-impression {
+  pointer-events: auto;
   position: absolute;
 }
 .join-impression:focus-visible {
@@ -53,7 +70,7 @@
   position: absolute;
   top: 50%;
   right: 0;
-  width: 100svh;
+  width: var(--sheet-height);
   height: auto;
   transform: rotate(-90deg) translate(50%, -100%);
   transform-origin: top right;
@@ -62,5 +79,5 @@
 /* Reserve the rotated 7:1 mark's actual width in the footer flow. */
 .join-footer::after {
   content: '';
-  width: calc(100svh / 7);
+  width: calc(var(--sheet-height) / 7);
 }

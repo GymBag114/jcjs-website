@@ -3,7 +3,7 @@
 export function bindNavigation(
   scene,
   gallery,
-  { onPrint, busy, introActive, turnPage, brush, endTouch },
+  { onPrint, busy, introActive, turnPage, beginLandscapeWipe, hitTower, brush, endTouch },
 ) {
   const blocked = () => busy() || gallery.turning();
   function step(forward) {
@@ -12,10 +12,10 @@ export function bindNavigation(
   }
 
   let drag;
-  const pending = [];
+  let pending = null;
   let pendingFrame = 0;
   function clearPending() {
-    pending.length = 0;
+    pending = null;
     cancelAnimationFrame(pendingFrame);
     pendingFrame = 0;
   }
@@ -32,10 +32,13 @@ export function bindNavigation(
   }
   function flush() {
     pendingFrame = 0;
-    while (pending.length && !mustWait(pending[0].direction)) {
-      pending.shift().move();
+    if (!pending) return;
+    if (mustWait(pending.direction)) pendingFrame = requestAnimationFrame(flush);
+    else {
+      const { move } = pending;
+      pending = null;
+      move();
     }
-    if (pending.length) pendingFrame = requestAnimationFrame(flush);
   }
   function key(event) {
     cancelDrag();
@@ -51,25 +54,30 @@ export function bindNavigation(
     schedule(direction, () => moveKey({ direction, page: key.startsWith('Page'), repeat }), repeat);
   }
   function schedule(direction, move, repeat = false) {
-    if (pending.length && pending[0].direction !== direction) clearPending();
-    if (mustWait(direction) || pending.length) {
-      // Remember deliberate inputs made during a wipe. Held keys resume
-      // on the next system repeat, without building a backlog after keyup.
-      if (!repeat) pending.push({ direction, move });
-      if (pending.length && !pendingFrame) pendingFrame = requestAnimationFrame(flush);
+    if (!repeat) clearPending();
+    if (introActive()) return;
+    if (!repeat && gallery.reverseWipe(direction)) return;
+    if (!repeat && busy() && !gallery.active && direction > 0 !== onPrint()) {
+      turnPage(direction > 0);
+      return;
+    }
+    if (mustWait(direction)) {
+      if (!repeat) {
+        pending = { direction, move };
+        pendingFrame = requestAnimationFrame(flush);
+      }
     } else move();
   }
 
   let lastWheel = -Infinity,
     lastDelta = 0,
     wheelDistance = 0;
-  let consumed = false,
-    consumedAt = 0,
-    peak = 0;
+  let consumed = false;
+  let wheelTurnLocked = false;
   scene.addEventListener(
     'wheel',
     (event) => {
-      if (event.ctrlKey) return;
+      if (event.ctrlKey || zoomed()) return;
       const mode = event.deltaMode;
       const dx = event.deltaX * (mode === 2 ? scene.clientWidth : mode === 1 ? 16 : 1);
       const dy = event.deltaY * (mode === 2 ? scene.clientHeight : mode === 1 ? 16 : 1);
@@ -78,60 +86,79 @@ export function bindNavigation(
       const delta = horizontal ? dx : dy;
       if (!delta) return;
       event.preventDefault();
-      cancelDrag();
       const now = event.timeStamp;
       const gap = now - lastWheel;
-      const amount = Math.abs(delta);
-      const previous = Math.abs(lastDelta);
       const reversed = delta * lastDelta < 0;
       lastWheel = now;
       lastDelta = delta;
-      if (blocked()) {
-        if (consumed) peak = Math.max(peak, amount);
+      // Wheel has no portable end-of-gesture marker. Keep the turn locked
+      // through the wipe, then require a quiet gap before the next burst.
+      if (gallery.turning() || (drag?.mode === 'wipe' && gallery.active)) {
+        wheelTurnLocked = true;
+        wheelDistance = 0;
         return;
       }
-      // Momentum packets keep arriving after a trackpad flick. Another
-      // detent, deliberate acceleration or sustained pressure can continue.
-      if (
-        gap > 140 ||
-        reversed ||
-        (consumed &&
-          (amount > previous * 1.4 + 2 ||
-            (gap > 45 && amount >= Math.max(4, previous)) ||
-            (now - consumedAt > 180 && amount >= Math.max(4, peak))))
-      ) {
+      if (wheelTurnLocked && gap <= 220) return;
+      wheelTurnLocked = false;
+      cancelDrag();
+      // A same-direction wheel burst owns one track or turn. A later
+      // momentum packet must not open the next turn at a track boundary.
+      if (gap > 140 || reversed) {
         wheelDistance = 0;
         consumed = false;
       }
       if (consumed) return;
-      clearPending();
+      if (introActive()) return;
       if (onPrint() && reversed) gallery.grab();
-      if (onPrint() && gallery.canPan(delta)) {
+      if (!blocked() && onPrint() && gallery.canPan(delta)) {
+        clearPending();
         gallery.panWheel(delta);
         if (gallery.canPan(delta)) return;
       } else {
         wheelDistance += delta;
         if (Math.abs(wheelDistance) < 26) return;
-        schedule(Math.sign(delta), () => step(delta > 0));
+        const distance = wheelDistance;
+        schedule(Math.sign(delta), () => {
+          if (onPrint() && gallery.canPan(distance)) {
+            gallery.panWheel(distance);
+            return;
+          }
+          const from = gallery.target;
+          step(distance > 0);
+          if (
+            from !== gallery.target &&
+            (from === gallery.unionPage || gallery.target === gallery.unionPage)
+          )
+            wheelTurnLocked = true;
+        });
       }
       consumed = true;
-      peak = amount;
-      consumedAt = now;
       wheelDistance = 0;
     },
     { passive: false },
   );
 
+  const zoomed = () => (window.visualViewport?.scale ?? 1) > 1.01;
+  window.visualViewport?.addEventListener('resize', () => {
+    scene.classList.toggle('zoomed', zoomed());
+    if (zoomed()) cancelDrag(true);
+  });
+
   scene.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary) {
+      cancelDrag(true);
+      clearPending();
+      return;
+    }
     if (
       introActive() ||
-      !event.isPrimary ||
-      event.pointerType !== 'touch' ||
+      gallery.turning() ||
+      zoomed() ||
+      event.button !== 0 ||
       event.target.closest('button')
     )
       return;
     clearPending();
-    lastWheel = -Infinity;
     if (onPrint() && !blocked()) gallery.grab();
     drag = {
       id: event.pointerId,
@@ -140,71 +167,123 @@ export function bindNavigation(
       last: 0,
       time: event.timeStamp,
       speed: 0,
-      mode: null,
+      start: gallery.target,
       axis: null,
+      mode: null,
+      wipe: null,
+      origin: 0,
+      progress: 0,
+      panned: false,
+      waiting: blocked(),
+      tower:
+        event.pointerType === 'touch' &&
+        onPrint() &&
+        !gallery.active &&
+        hitTower(event.clientX, event.clientY),
     };
   });
 
-  function moveTouch(event) {
+  function startWipe(direction, origin) {
+    const wipe = gallery.active ? gallery.beginWipe(direction) : beginLandscapeWipe(direction);
+    if (!wipe) return false;
+    drag.mode = 'wipe';
+    drag.wipe = wipe;
+    drag.direction = direction;
+    drag.origin = origin;
+    drag.span = Math.max(140, (drag.axis === 'x' ? scene.clientWidth : scene.clientHeight) * 0.7);
+    return true;
+  }
+
+  function movePointer(event) {
     if (!drag || drag.id !== event.pointerId) return;
     const dx = drag.x - event.clientX,
       dy = drag.y - event.clientY;
     if (!drag.axis) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < 5 || blocked()) return;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
       drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      const direction = drag.axis === 'x' ? dx : dy;
-      if (onPrint() && gallery.canPan(direction)) drag.mode = 'pan';
-      else if (!gallery.active && drag.axis === 'x') drag.mode = 'brush';
-      else drag.mode = 'turn';
-      // Native pointer capture on the anchor preserves a tap. Transfer
-      // capture only once dragging starts so its release cannot open JOIN US.
-      scene.setPointerCapture(event.pointerId);
+      const distance = drag.axis === 'x' ? dx : dy;
+      if (drag.waiting) drag.mode = 'waiting';
+      else if (drag.tower && drag.axis === 'x') {
+        drag.mode = 'brush';
+        brush({ clientX: drag.x, clientY: drag.y });
+      } else if (onPrint() && gallery.canPan(distance)) drag.mode = 'pan';
+      else {
+        drag.mode = 'idle';
+        if (onPrint() || drag.axis === 'y') startWipe(Math.sign(distance), 0);
+      }
+      if (scene.hasPointerCapture(event.pointerId) || event.type !== 'pointerup')
+        scene.setPointerCapture(event.pointerId);
     }
     const distance = drag.axis === 'x' ? dx : dy;
     const delta = distance - drag.last;
     if (!delta) return;
     if (drag.mode === 'pan') {
-      gallery.pan(delta, true);
-      const dt = Math.max(1, event.timeStamp - drag.time);
-      const blend = 1 - Math.exp(-dt / 35);
-      drag.speed += (delta / dt - drag.speed) * blend;
-    } else if (drag.mode === 'brush' && onPrint()) brush(event);
+      drag.panned = true;
+      const excess = gallery.pan(delta, true);
+      if (Math.abs(excess) > 0.01) startWipe(Math.sign(excess), distance - excess);
+    }
+    if (drag.mode === 'wipe') {
+      const travel = (distance - drag.origin) * drag.direction;
+      drag.progress = Math.max(0, Math.min(1, travel / drag.span));
+      drag.wipe.preview(drag.progress);
+      if (travel < 0 && onPrint() && gallery.canPan(-drag.direction)) {
+        drag.wipe.settle(false);
+        drag.wipe = null;
+        drag.mode = 'pan';
+        gallery.pan(distance - drag.origin, true);
+      }
+    } else if (drag.mode === 'brush') brush(event);
+    const dt = Math.max(1, event.timeStamp - drag.time);
+    drag.speed += (delta / dt - drag.speed) * (1 - Math.exp(-dt / 35));
     drag.last = distance;
     drag.time = event.timeStamp;
   }
-  scene.addEventListener('pointermove', moveTouch, { passive: true });
+  scene.addEventListener('pointermove', movePointer, { passive: true });
   scene.addEventListener('pointerup', (event) => {
     if (drag?.id !== event.pointerId) return;
-    moveTouch(event);
-    const { mode, last, speed, time, x, y } = drag;
+    movePointer(event);
+    const { mode, last, speed, time, direction, origin, progress, wipe } = drag;
     drag = null;
-    if (mode === 'pan' && event.timeStamp - time < 80) gallery.release(speed);
-    if (mode === 'turn' && Math.abs(last) >= 42) step(last > 0);
-    if (!mode && blocked()) {
-      // A complete new swipe can fit inside a page wipe. Apply it when
-      // the next sheet arrives, using its own track and measured width.
-      const dx = x - event.clientX,
-        dy = y - event.clientY;
-      const distance = onPrint() && Math.abs(dx) > Math.abs(dy) ? dx : dy;
-      if (Math.abs(distance) >= 42)
-        schedule(Math.sign(distance), () => {
-          if (onPrint() && gallery.canPan(distance)) gallery.pan(distance);
-          else step(distance > 0);
-        });
+    const releaseSpeed = event.timeStamp - time < 100 ? speed : 0;
+    if (mode === 'pan') gallery.release(releaseSpeed);
+    if (mode === 'wipe') {
+      const travel = (last - origin) * direction;
+      if (gallery.active) {
+        wheelTurnLocked = true;
+        lastWheel = event.timeStamp;
+        wheelDistance = 0;
+      }
+      wipe.settle(
+        progress >= 0.5 ||
+          (releaseSpeed * direction >= -0.2 &&
+            (travel >= 64 || (travel >= 18 && releaseSpeed * direction > 0.32))),
+      );
+    }
+    if (mode === 'waiting' && Math.abs(last) >= 32) {
+      schedule(Math.sign(last), () => {
+        if (onPrint() && gallery.canPan(last)) gallery.pan(last);
+        else step(last > 0);
+      });
     }
     endTouch();
   });
-  function cancelDrag() {
+
+  function cancelDrag(restore = false) {
     if (!drag) return;
+    drag.wipe?.settle(false);
+    if (restore && drag.panned) {
+      gallery.seek(drag.start);
+      gallery.finish();
+    }
+    if (scene.hasPointerCapture(drag.id)) scene.releasePointerCapture(drag.id);
     drag = null;
     endTouch();
   }
-  function cancelTouch(event) {
-    if (event.pointerId === drag?.id) cancelDrag();
-  }
-  scene.addEventListener('pointercancel', cancelTouch);
+  scene.addEventListener('pointercancel', (event) => {
+    if (event.pointerId === drag?.id) cancelDrag(true);
+  });
   scene.addEventListener('lostpointercapture', (event) => {
-    if (event.target === scene) cancelTouch(event);
+    if (event.target === scene && event.pointerId === drag?.id) cancelDrag();
   });
   window.addEventListener('blur', () => {
     clearPending();

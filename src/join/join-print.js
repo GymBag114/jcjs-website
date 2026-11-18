@@ -16,6 +16,7 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     phase = 0,
     lastPaint = 0,
     exitPlayhead = 0;
+  const touchLayout = matchMedia('(hover: none), (pointer: coarse)');
   const duration = 690;
 
   // All letters and the arrow share a 100-unit master and one uniform scale.
@@ -57,12 +58,17 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     return { word, scale, fit, arrowX, totalWidth: width * fit + overhang * scale };
   }
 
-  function lockupBounds(box) {
+  function lockupBounds(box, opening) {
     const { scale, fit, arrowX, totalWidth } = box.type;
-    const travel = eased(playhead);
+    const travel = eased(opening);
     const bw = mix(box.width, box.width * fit, travel),
       bh = mix(box.height, box.height * fit, travel);
-    const left = mix(box.left, (box.w - totalWidth) / 2, travel);
+    const centered = (box.w - totalWidth) / 2;
+    const openLeft =
+      box.rotated && touchLayout.matches
+        ? Math.max(box.w * 0.03, centered - box.w * 0.05)
+        : centered;
+    const left = mix(box.left, openLeft, travel);
     const top = (box.h - bh) / 2,
       right = left + bw;
     const pen = left + (pad - arrowX * (1 - travel)) * scale;
@@ -101,10 +107,12 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     ctx.restore();
   }
 
-  function measure(w, h) {
-    const { width: pixelsW, height: pixelsH } = ctx.canvas;
+  function measure(w, h, rotated) {
+    const pixelsW = rotated ? ctx.canvas.height : ctx.canvas.width;
+    const pixelsH = rotated ? ctx.canvas.width : ctx.canvas.height;
     if (
       layout?.w === w &&
+      layout.rotated === rotated &&
       layout.h === h &&
       layout.pixelsW === pixelsW &&
       layout.pixelsH === pixelsH
@@ -130,7 +138,21 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
       pin.restY = top + (preceding / (stackedHeight - pin.height)) * (height - pin.height);
       preceding += pin.height;
     }
+    if (rotated) {
+      const source = union.pinGeometry(1, h, w).reverse();
+      pins.forEach((pin, i) => {
+        const from = source[i];
+        pin.endHeight = pin.height;
+        Object.assign(pin, {
+          x: from.y,
+          y: h - from.x - from.width,
+          width: from.height,
+          height: from.width,
+        });
+      });
+    }
     layout = {
+      rotated,
       w,
       h,
       pixelsW,
@@ -141,7 +163,7 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
       top,
       pins,
       type: lettering(width, height, w),
-      sheet: makeJoinSheet(ctx.canvas, w, h, left + width, emblemMotion),
+      sheet: makeJoinSheet({ width: pixelsW, height: pixelsH }, w, h, left + width, emblemMotion),
     };
     Object.assign(impression.style, {
       left: left + 'px',
@@ -152,29 +174,51 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     return layout;
   }
 
-  function draw(clock, sheet, w, h, pan = 0) {
-    const box = measure(w, h);
-    const density = ctx.canvas.height / h;
-    const edge = Math.round((1 - sheet) * h * density) / density;
+  function draw(clock, sheet, screenW, screenH, pan = 0) {
+    const rotated = screenW < screenH;
+    const w = rotated ? screenH : screenW;
+    const h = rotated ? screenW : screenH;
+    const box = measure(w, h, rotated);
+    const opening = touchLayout.matches ? 1 : playhead;
+    const density = ctx.canvas.height / screenH;
+    const edge = Math.round((1 - sheet) * screenH * density) / density;
+    function clipSheet() {
+      ctx.beginPath();
+      if (rotated) ctx.rect(edge, 0, w + pan - edge, h);
+      else ctx.rect(0, edge, w + pan, h - edge);
+      ctx.clip();
+    }
     ctx.save();
+    if (rotated) {
+      ctx.translate(screenW, 0);
+      ctx.rotate(Math.PI / 2);
+    }
     ctx.translate(-pan, 0);
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, edge, w + pan, h - edge);
-    ctx.clip();
-    box.sheet.draw(ctx, clock, emblemMotion(playhead * 420).front, phase, pan);
+    clipSheet();
+    box.sheet.draw(
+      ctx,
+      clock,
+      emblemMotion((touchLayout.matches ? 0 : playhead) * 420).front,
+      phase,
+      pan,
+    );
     ctx.restore();
-    const bounds = lockupBounds(box);
+    const bounds = lockupBounds(box, opening);
     if (clock === 1) {
       const { left, top, bw, bh, boundRight } = bounds;
-      // Keep the original target under a stationary pointer during travel.
-      if (box.lastHitPlayhead !== playhead) {
-        box.lastHitPlayhead = playhead;
+      if (box.lastOpening !== opening || box.lastPan !== pan) {
+        box.lastOpening = opening;
+        box.lastPan = pan;
+        // A fine pointer can enter at the edge of the resting plate. Keep it
+        // inside while the lettering unfolds, including on a translated sheet.
+        const hitTop = touchLayout.matches ? top : box.top;
+        const hitRight = touchLayout.matches ? boundRight : Math.max(box.left + box.width, boundRight);
         Object.assign(impression.style, {
-          left: left + 'px',
-          top: box.top + 'px',
-          width: Math.max(box.left + box.width, boundRight) - left + 'px',
-          height: box.height + 'px',
+          left: left - pan + 'px',
+          top: hitTop + 'px',
+          width: hitRight - left + 'px',
+          height: (box.h - 2 * hitTop) + 'px',
         });
       }
       ctx.fillStyle = '#161616';
@@ -196,14 +240,12 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
         left,
         mix(pin.y, restY, spread.front),
         right - left,
-        mix(pin.height, pin.height * scaleY, spread.front),
+        mix(pin.height, (pin.endHeight ?? pin.height) * scaleY, spread.front),
       );
     });
     ctx.fillStyle = '#faf5ec';
     ctx.fill(bands);
-    ctx.beginPath();
-    ctx.rect(0, edge, w, h - edge);
-    ctx.clip();
+    clipSheet();
     ctx.fillStyle = '#161616';
     ctx.fill(bands);
     const revealStart = exitPlayhead ? 0.45 : 0.7;
@@ -263,6 +305,9 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
       updateHover();
     }
   });
+  touchLayout.addEventListener('change', () => {
+    if (active) repaint();
+  });
   impression.addEventListener('focus', updateHover);
   impression.addEventListener('blur', updateHover);
   reducedMotion.addEventListener('change', updateHover);
@@ -275,7 +320,7 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
     }
     if (enabled === active) return;
     active = enabled;
-    impression.hidden = !active || panning;
+    impression.hidden = !active;
     if (!active) {
       cancelAnimationFrame(raf);
       raf = 0;
@@ -288,10 +333,6 @@ export function createJoinPrint(ctx, scene, union, emblemMotion, repaint, reduce
   function setPanning(value) {
     if (panning === value) return;
     panning = value;
-    impression.hidden = !active || panning;
-    if (panning) {
-      hovered = false;
-    }
     updateHover();
   }
   return { draw, setInteractive, setPanning };

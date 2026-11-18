@@ -1,3 +1,4 @@
+import { drawSloganPrint } from '../artwork/slogan-prints.js';
 import { printDensity } from '../core/render-budget.js';
 import { createUnionArtwork } from '../artwork/union.js';
 import { createJoinPrint } from '../join/join-print.js';
@@ -67,9 +68,8 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
   };
   // The first gallery composition sits at camera zero; the poster is one
   // approach to its left. Wheel, touch and keys all move on this same track.
-  const approach = 1.34,
-    end = 2.55;
-  const overview = approach / (approach + end);
+  const approach = 1.34;
+  let end = 2.55;
   const nodes = [
     [0.12, 0.66, 0.14],
     [0.21, 0.26, 0.11],
@@ -115,6 +115,24 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     [12, '平等'],
     [21, '秩序'],
   ]);
+  // Original tile IDs also identify the matching UNION trails.
+  const narrowNodes = new Map([
+    [0, [0.15, 0.26, 0.14]],
+    [3, [0.51, 0.49, 0.63]],
+    [6, [0.88, 0.73, 0.17]],
+    [10, [1.22, 0.36, 0.13]],
+    [12, [1.63, 0.55, 0.61]],
+    [15, [1.98, 0.26, 0.18]],
+    [18, [2.26, 0.67, 0.15]],
+    [21, [2.69, 0.45, 0.64]],
+    [24, [3.06, 0.72, 0.18]],
+    [27, [3.45, 0.31, 0.12]],
+    [29, [3.96, 0.55, 0.57]],
+    [30, [4.36, 0.77, 0.13]],
+  ]);
+  const desktopIds = nodes.map((_, i) => i);
+  const narrowIds = [...narrowNodes.keys()];
+  let narrow = false;
   const tiles = new Map();
   const dotInks = new Map();
   const union = createUnionArtwork(ctx, emblemMotion);
@@ -144,42 +162,36 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     const key = label || i;
     if (tiles.has(key)) return tiles.get(key);
     const img = [tower, sky, ground, tower][i % 4];
-    if (!img.complete || !img.naturalWidth) return;
+    if (!img.naturalWidth || (label && !tower.naturalWidth)) return;
     const tile = document.createElement('canvas');
     tile.width = tile.height = 512;
     const g = tile.getContext('2d', { willReadFrequently: true });
     const light = i % 3 === 0;
-    g.fillStyle = light ? '#e5dfd2' : i % 3 === 1 ? '#9b3029' : '#302d28';
-    g.fillRect(0, 0, 512, 512);
-    const crop = Math.min(img.naturalWidth, img.naturalHeight) * (0.48 + (i % 4) * 0.12);
-    g.globalAlpha = light ? 0.78 : 0.72;
-    g.globalCompositeOperation = light ? 'multiply' : 'luminosity';
-    const sx = (img.naturalWidth - crop) * ((i * 0.37) % 1),
-      sy = (img.naturalHeight - crop) * ((i * 0.23 + 0.4) % 1);
-    if (i === 3) union.sampleTower(img, sx, sy, crop);
-    g.drawImage(img, sx, sy, crop, crop, 0, 0, 512, 512);
-    g.globalCompositeOperation = 'source-over';
-    g.globalAlpha = 1;
-    if (i % 3 === 1) {
-      g.fillStyle = '#211c1988';
-      g.beginPath();
-      g.moveTo(0, 0);
-      g.lineTo(210, 0);
-      g.lineTo(0, 400);
-      g.fill();
+    if (label) drawSloganPrint(g, label, tower);
+    else {
+      g.fillStyle = light ? '#e5dfd2' : i % 3 === 1 ? '#9b3029' : '#302d28';
+      g.fillRect(0, 0, 512, 512);
+      const crop = Math.min(img.naturalWidth, img.naturalHeight) * (0.48 + (i % 4) * 0.12);
+      g.globalAlpha = light ? 0.78 : 0.72;
+      g.globalCompositeOperation = light ? 'multiply' : 'luminosity';
+      const sx = (img.naturalWidth - crop) * ((i * 0.37) % 1),
+        sy = (img.naturalHeight - crop) * ((i * 0.23 + 0.4) % 1);
+      if (i === 3) union.sampleTower(img, sx, sy, crop);
+      g.drawImage(img, sx, sy, crop, crop, 0, 0, 512, 512);
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
+      if (i % 3 === 1) {
+        g.fillStyle = '#211c1988';
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(210, 0);
+        g.lineTo(0, 400);
+        g.fill();
+      }
     }
     const color = light ? '#372a2036' : '#eee6cc38';
     if (!dotInks.has(color)) dotInks.set(color, dotColors(color));
     applyDots(g, dotInks.get(color));
-    if (label) {
-      // A vertical title follows the tower's axis, leaving the engraving open.
-      g.fillStyle = label === '秩序' ? '#f3ebda' : '#902e25';
-      g.font = '400 124px "Songti SC", "Noto Serif CJK SC", SimSun, serif';
-      g.textAlign = 'left';
-      g.textBaseline = 'top';
-      g.fillText(label[0], 34, 30);
-      g.fillText(label[1], 34, 164);
-    }
     tiles.set(key, tile);
     return tile;
   }
@@ -200,13 +212,16 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
 
   function size() {
     lastPosterDistance = undefined;
-    const wasHidden = footer.hidden;
-    footer.hidden = false;
-    footerWidth = footer.getBoundingClientRect().width;
-    footer.hidden = wasHidden;
     width = scene.clientWidth;
     height = scene.clientHeight;
     portrait = width / height <= 0.8;
+    narrow = width < height;
+    end = narrow ? 3.42 : 2.55;
+    scene.classList.toggle('join-portrait', narrow);
+    const wasHidden = footer.hidden;
+    footer.hidden = false;
+    footerWidth = parseFloat(getComputedStyle(footer).width);
+    footer.hidden = wasHidden;
     paperWidth = width / Math.max(width / 2560, height / 1440);
     unionStill = null;
     if (pos || target) render();
@@ -262,7 +277,7 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     footer.hidden = footerPosition === 0;
     // The opaque black pass and the light paper beneath it end on the same
     // backing pixel. Subpixel translation would blend both edges into a line.
-    const densityX = canvas.width / width;
+    const densityX = narrow ? canvas.height / height : canvas.width / width;
     const pan = Math.round(footerPosition * footerWidth * densityX) / densityX;
     if (!footer.hidden) {
       const remaining = footerPosition === 1 ? 0 : footerWidth - pan;
@@ -297,24 +312,19 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     // At camera zero and at the endpoint the frames land on their composed
     // coordinates. Between them, closer frames cross the lens faster.
     const parallax = camera <= 0 ? camera : (end / Math.PI) * Math.sin((Math.PI * camera) / end);
-    const frames = nodes.map(([nx, ny, size], i) => {
+    const frames = nodes.map((node, i) => {
+      const placement = narrow ? narrowNodes.get(i) : node;
+      if (!placement) return null;
+      const [nx, ny, size] = placement;
       const depth = depths[i];
-      let x = (nx - camera - (depth - 1) * parallax) * width;
+      const x = (nx - camera - (depth - 1) * parallax * (narrow ? 0.28 : 1)) * width;
       let y = ny * height;
-      if (portrait && i >= 24) {
-        if (i === 29) {
-          x -= width * 0.1 * endpoint;
-          y += height * 0.09 * endpoint;
-        }
-        if (i === 24) y -= height * 0.12 * endpoint;
-        if (i === 26) x += width * 0.34 * endpoint;
-      }
       const shrink = smooth((x / width + 0.075) / 0.24);
       const appear = smooth((1.18 - x / width) / 0.19);
       // Incoming prints open away from the horizon as they reach the lens.
       y = height * 0.5 + (y - height * 0.5) * (1 - (1 - appear) * depth * 0.17);
       const scale = (0.05 + 0.95 * shrink) * (0.72 + 0.28 * appear);
-      const side = size * unit * (portrait ? 1.43 : 1) * scale;
+      const side = size * unit * scale;
       if (i === 25) return { x, y, w: side * 3.1, h: side * 0.51, alpha: shrink * appear };
       return { x, y, w: side * (i === 29 ? 1.12 : 1), h: side, alpha: shrink * appear };
     });
@@ -327,22 +337,25 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     // Links meet the moving centers and share the frames' depth falloff.
     ctx.strokeStyle = '#63564c';
     ctx.lineWidth = 0.7;
-    for (let i = 0; i < frames.length; i++) {
+    const linkIds = narrow ? narrowIds : desktopIds;
+    for (let j = 0; j < linkIds.length; j++) {
+      const i = linkIds[j];
       const a = frames[i];
       if (a.x < -0.55 * width || a.x > width * 1.1) continue;
-      for (const offset of [1, 3]) {
-        const b = frames[i + offset];
+      for (const offset of narrow ? [1] : [1, 3]) {
+        const next = linkIds[j + offset];
+        const b = frames[next];
         if (!b) continue;
         ctx.globalAlpha = 0.46 * (1 - smooth(finale / 0.32)) * Math.min(a.alpha, b.alpha);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y - shift(i));
-        ctx.lineTo(b.x, b.y - shift(i + offset));
+        ctx.lineTo(b.x, b.y - shift(next));
         ctx.stroke();
       }
     }
     for (const i of paintOrder) {
       const f = frames[i];
-      if (!f.alpha || f.x + f.w / 2 < 0 || f.x - f.w / 2 > width) continue;
+      if (!f || !f.alpha || f.x + f.w / 2 < 0 || f.x - f.w / 2 > width) continue;
       const x = f.x - f.w / 2,
         y = f.y - f.h / 2 - shift(i);
       ctx.globalAlpha = f.alpha;
@@ -369,14 +382,17 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     }
     if (endpoint) {
       ctx.globalAlpha = endpoint * (1 - smooth(finale / 0.38));
-      const x = width * (0.075 + (1 - endpoint) * 0.36),
-        y = height * ((portrait ? 0.25 : 0.35) - finale * 0.95);
-      const em = Math.min(width * (portrait ? 0.134 : 0.082), height * 0.17);
+      const hero = frames[29];
+      const x = narrow ? hero.x - hero.w / 2 : width * (0.075 + (1 - endpoint) * 0.36);
+      const y = narrow
+        ? hero.y - hero.h / 2 - width * 0.13 - height * finale
+        : height * (0.35 - finale * 0.95);
+      const em = Math.min(width * (narrow ? 0.134 : 0.082), height * 0.17);
       ctx.fillStyle = '#25201c';
       ctx.font = 'italic ' + em * 0.62 + 'px Didot, Georgia, serif';
       ctx.fillText('This is', x, y);
       if (logo.complete && logo.naturalWidth) {
-        const logoWidth = Math.min(width * (portrait ? 0.46 : 0.29), em * 4.2);
+        const logoWidth = Math.min(width * (narrow ? 0.46 : 0.29), em * 4.2);
         ctx.drawImage(logo, x, y + em * 0.3, logoWidth, logoWidth / 7);
       }
       if (clock) union.type(finale, clock, width, height, !joinClock);
@@ -463,12 +479,14 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
     const footerTrack = target >= joinPage;
     const start = footerTrack ? joinPage : 0;
     const travel = footerTrack ? footerWidth : width * (approach + end);
-    const progress = clamp(target - start + pixels / travel);
+    const before = target - start;
+    const progress = clamp(before + pixels / travel);
     if (direct) {
       if (footerTrack) footerPosition = progress;
       else pos = progress;
     }
     seek(start + progress, damping);
+    return pixels - (progress - before) * travel;
   }
 
   function panWheel(delta) {
@@ -495,17 +513,52 @@ export function createGallery(scene, reducedMotion, emblemMotion, sheetEase, onC
       pan(Math.sign(speed) * reach, false, glideDampingMs);
     }
   }
+  // Scrub the same UNION/JOIN clock used by wheel and keyboard turns.
+  function beginWipe(direction) {
+    const stops = [1, unionPage, joinPage];
+    const from = stops.indexOf(target);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= stops.length || turning()) return null;
+    const times = [0, pageDuration, finalTime];
+    cancelAnimationFrame(raf);
+    raf = last = lastPageFrame = 0;
+    pos = 1;
+    return {
+      preview(progress) {
+        if (reducedMotion.matches) return;
+        pageTime = times[from] + (times[to] - times[from]) * progress;
+        render();
+      },
+      settle(commit) {
+        if (commit) seek(stops[to]);
+        if (reducedMotion.matches) finish();
+        else if (!raf) raf = requestAnimationFrame(tick);
+      },
+    };
+  }
+
+  function reverseWipe(direction) {
+    if (!turning() || direction === Math.sign(goalTime() - pageTime)) return false;
+    if (direction > 0) seek(pageTime <= pageDuration ? unionPage : joinPage);
+    else seek(pageTime >= pageDuration ? unionPage : 1);
+    return true;
+  }
   function step(forward) {
     if (turning()) return;
     if (target > joinPage) seek(forward ? limit : joinPage);
     else if (target === joinPage) seek(forward ? limit : unionPage);
     else if (target === unionPage) seek(forward ? joinPage : 1);
     else if (target === 1 && forward) seek(unionPage);
-    else seek(forward && !target ? overview : clamp(target + (forward ? 0.18 : -0.18)));
+    else
+      seek(
+        forward && !target ? approach / (approach + end) : clamp(target + (forward ? 0.18 : -0.18)),
+      );
   }
   return {
     size,
     warmNextTile,
+    beginWipe,
+    reverseWipe,
     seek,
     step,
     finish,

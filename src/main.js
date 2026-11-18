@@ -156,8 +156,8 @@ function preparePrint() {
   while (!printReady) advancePrint();
 }
 
-function turnPage(toPrint) {
-  if (intro.active || toPrint === onPrint || performance.now() < lockedUntil) return;
+function turnPage(toPrint, duration = 980) {
+  if (intro.active || toPrint === onPrint) return;
   if (toPrint) {
     // Some browsers defer resolution/resize events until the next interaction.
     resize();
@@ -167,13 +167,41 @@ function turnPage(toPrint) {
   // Start centering from the last painted depth offsets on the wipe frame.
   reset(reducedMotion.matches);
   onPrint = toPrint;
-  lockedUntil = performance.now() + (reducedMotion.matches ? 0 : 980);
+  scene.style.setProperty('--turn-duration', duration + 'ms');
+  lockedUntil = performance.now() + (reducedMotion.matches ? 0 : duration);
   scene.dataset.page = toPrint ? 'print' : 'landscape';
   if (!toPrint) scheduleWarmup();
   scene.setAttribute('aria-label', toPrint ? '未竟之塔 · Introducing JCJS' : '异境');
   themeColor.content = toPrint ? '#eee9df' : '#e5ddd1';
   pageButton.textContent = toPrint ? '进入横向画廊' : '进入第二页 · 未竟之塔';
   notice.textContent = toPrint ? '第二页，未竟之塔' : '第一页，异境';
+}
+
+function beginLandscapeWipe(direction) {
+  const toPrint = direction > 0;
+  if (toPrint === onPrint) return null;
+  if (toPrint) preparePrint();
+  towerDust.settle();
+  reset(true);
+  let progress = 0;
+  return {
+    preview(value) {
+      progress = value;
+      if (reducedMotion.matches) return;
+      scene.style.setProperty('--reveal', toPrint ? value : 1 - value);
+      scene.dataset.reveal = '';
+    },
+    settle(commit) {
+      const duration = Math.round(980 * (commit ? 1 - progress : progress));
+      if (commit) turnPage(toPrint, duration);
+      else {
+        scene.style.setProperty('--turn-duration', duration + 'ms');
+        lockedUntil = performance.now() + (reducedMotion.matches ? 0 : duration);
+      }
+      delete scene.dataset.reveal;
+      scene.style.removeProperty('--reveal');
+    },
+  };
 }
 
 async function toggleFullscreen() {
@@ -192,6 +220,8 @@ const navigation = bindNavigation(scene, gallery, {
   introActive: () => intro.active,
   busy: () => intro.active || performance.now() < lockedUntil,
   turnPage,
+  beginLandscapeWipe,
+  hitTower: towerDust.hitTest,
   brush: (event) => {
     if (!reducedMotion.matches) towerDust.brush(event);
   },
@@ -206,6 +236,7 @@ scene.addEventListener(
   (event) => {
     if (
       event.pointerType === 'touch' ||
+      event.buttons ||
       intro.active ||
       performance.now() < lockedUntil ||
       event.target.closest('button')

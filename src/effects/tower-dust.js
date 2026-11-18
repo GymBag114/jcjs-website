@@ -145,21 +145,43 @@ export function createTowerDust(tower) {
     return tip;
   }
 
-  function prepare() {
-    if (atlas) return true;
+  function sampleCoverage(image) {
+    if (coverage || !image.naturalWidth) return;
+    const sample = surface(columns, rows).getContext('2d');
+    sample.drawImage(image, 0, 0, columns, rows);
+    try {
+      coverage = sample.getImageData(0, 0, columns, rows).data;
+    } catch {
+      // A cross-origin preview can still display the tower without pixel reads.
+    }
+  }
+
+  function hitTest(clientX, clientY) {
+    const b = tower.getBoundingClientRect();
+    const col = Math.floor((clientX - b.left) / b.width * columns);
+    const row = Math.floor((clientY - b.top) / b.height * rows);
+    if (col < 0 || col >= columns || row < 0 || row >= rows) return false;
+    sampleCoverage(tower.querySelector('img'));
+    const hit = coverage && coverage[(row * columns + col) * 4 + 3] >= 32;
+    if (hit) loadMonochrome();
+    return hit;
+  }
+
+  function loadMonochrome() {
     if (!monochrome.src) {
       monochrome.src = new URL('../../assets/images/tower-monochrome.webp', import.meta.url).href;
     }
+  }
+
+  function prepare() {
+    if (atlas) return true;
+    loadMonochrome();
     if (!monochrome.complete || !monochrome.naturalWidth) return false;
     // The resting masonry and every dust tile share the baked monochrome plate.
     const thumb = surface(columns, rows),
       sample = thumb.getContext('2d');
     sample.drawImage(monochrome, 0, 0, columns, rows);
-    try {
-      coverage = sample.getImageData(0, 0, columns, rows).data;
-    } catch {
-      /* Local files can draw the same transparent tiles without readback. */
-    }
+    sampleCoverage(monochrome);
     atlas = surface(columns * sprite, rows * sprite);
     const ink = atlas.getContext('2d');
     ink.imageSmoothingEnabled = false;
@@ -374,6 +396,7 @@ export function createTowerDust(tower) {
   }
   return {
     brush,
+    hitTest,
     stop,
     settle,
     endStroke() {
